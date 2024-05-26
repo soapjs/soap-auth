@@ -1,0 +1,44 @@
+{
+  "name": "@soapjs/soap-auth",
+  "version": "0.0.1",
+  "description": "",
+  "homepage": "https://docs.soapjs.com",
+  "repository": "https://github.com/soapjs/soap-auth",
+  "main": "build/index.js",
+  "types": "build/index.d.ts",
+  "license": "MIT",
+  "author": "Radoslaw Kamysz",
+  "scripts": {
+    "test:unit": "jest --config=jest.config.unit.json",
+    "clean": "rm -rf ./build",
+    "build": "npm run clean && tsc -b",
+    "prepublish": "npm run clean && tsc --project tsconfig.build.json"
+  },
+  "devDependencies": {
+    "@soapjs/soap": "^0.1.2",
+    "@types/jest": "^27.0.3",
+    "@types/passport": "^1.0.16",
+    "express-session": "^1.18.0",
+    "jest": "^27.4.5",
+    "passport": "^0.7.0",
+    "ts-jest": "^27.1.3",
+    "typescript": "^4.8.2"
+  },
+  "peerDependencies": {
+    "@soapjs/soap": ">=0.1.2",
+    "express-session": "^1.18.0",
+    "passport": "^0.7.0"
+  },
+  "optionalDependencies": {
+    "passport-custom": "^1.1.1",
+    "passport-facebook": "^3.0.0",
+    "passport-google-oauth20": "^2.0.0",
+    "passport-http": "^0.3.0",
+    "passport-http-bearer": "^1.0.1",
+    "passport-jwt": "^4.0.1",
+    "passport-local": "^1.0.0",
+    "passport-oauth2": "^1.8.0",
+    "passport-twitter": "^0.1.5",
+    "web3": "^4.9.0"
+  }
+}
