@@ -16,16 +16,16 @@ export class SessionTools {
   }
 
   serializeUser(user: any, done: (err: any, id?: any) => void): void {
-    if (this.sessionConfig.serializeUser) {
-      this.sessionConfig.serializeUser(user, done);
+    if (this.sessionConfig.serializeData) {
+      this.sessionConfig.serializeData(user, done);
     } else {
       done(null, user.id);
     }
   }
 
   deserializeUser(id: any, done: (err: any, user?: any) => void): void {
-    if (this.sessionConfig.deserializeUser) {
-      this.sessionConfig.deserializeUser(id, done);
+    if (this.sessionConfig.deserializeData) {
+      this.sessionConfig.deserializeData(id, done);
     } else {
       done(null, { id });
     }

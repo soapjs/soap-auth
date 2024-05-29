@@ -1,12 +1,11 @@
 export enum StrategyType {
   Web3 = "web3",
   Local = "local",
-  Bearer = "bearer",
+  Token = "token",
   Basic = "basic",
   OAuth = "oauth",
   OAuth2 = "oauth2",
   ApiKey = "api-key",
-  JWT = "jwt",
   Session = "session",
 }
 

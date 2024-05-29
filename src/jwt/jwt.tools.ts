@@ -1,77 +1,68 @@
-import passport from "passport";
-import {
-  Strategy as JwtStrategy,
-  ExtractJwt,
-  StrategyOptions,
-} from "passport-jwt";
 import JWT from "jsonwebtoken";
-import { JwtConfig } from "../config";
+import {
+  EmptyPayloadError,
+  UndefinedAccessTokenError,
+  UndefinedAccessTokenSecretOrKeyError,
+  UndefinedRefreshTokenError,
+  UndefinedRefreshTokenSecretOrKeyError,
+} from "./errors";
+import { TokenConfig } from "./types";
 
 /**
  * Class for managing JWT authentication.
  */
 export class JwtTools {
-  private jwtConfig: JwtConfig;
-
-  constructor(jwtConfig: JwtConfig) {
-    this.jwtConfig = jwtConfig;
-  }
-
-  initStrategy(): void {
-    const opts: StrategyOptions = {
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
-      secretOrKey: this.jwtConfig.secretOrKey,
-    };
-
-    passport.use(
-      new JwtStrategy(opts, async (jwtPayload, done) => {
-        try {
-          const isValid = await this.jwtConfig.validate(jwtPayload);
-          if (isValid) {
-            return done(null, jwtPayload);
-          } else {
-            return done(null, false);
-          }
-        } catch (error) {
-          return done(error, false);
-        }
-      })
-    );
-  }
-
-  authenticate(): (...args: unknown[]) => void {
-    return passport.authenticate("jwt", { session: false });
-  }
+  constructor(public readonly config: TokenConfig) {}
 
   generateToken(payload: any): string {
-    if (!this.jwtConfig.secretOrKey) {
-      throw new Error("Secret or key is not defined");
+    if (!payload) {
+      throw new EmptyPayloadError();
     }
-    return JWT.sign(payload, this.jwtConfig.secretOrKey, {
-      expiresIn: this.jwtConfig.expiresIn,
+
+    if (!this.config.secretOrKey) {
+      throw new UndefinedAccessTokenSecretOrKeyError();
+    }
+
+    return JWT.sign(payload, this.config.secretOrKey, {
+      expiresIn: this.config.expiresIn,
     });
   }
 
   async verifyToken(token: string) {
-    if (!this.jwtConfig.secretOrKey) {
-      throw new Error("Secret or key is not defined");
+    if (!token) {
+      throw new UndefinedAccessTokenError();
     }
-    return JWT.verifyAsync(token, this.jwtConfig.secretOrKey);
+
+    if (!this.config.secretOrKey) {
+      throw new UndefinedAccessTokenSecretOrKeyError();
+    }
+
+    return JWT.verifyAsync(token, this.config.secretOrKey);
   }
 
   generateRefreshToken(payload: any): string {
-    if (!this.jwtConfig.refreshSecretOrKey) {
-      throw new Error("Refresh secret or key is not defined");
+    if (!payload) {
+      throw new EmptyPayloadError();
     }
-    return JWT.sign(payload, this.jwtConfig.refreshSecretOrKey, {
-      expiresIn: this.jwtConfig.refreshExpiresIn,
+
+    if (!this.config.refreshSecretOrKey) {
+      throw new UndefinedRefreshTokenSecretOrKeyError();
+    }
+
+    return JWT.sign(payload, this.config.refreshSecretOrKey, {
+      expiresIn: this.config.refreshExpiresIn,
     });
   }
 
   async verifyRefreshToken(token: string) {
-    if (!this.jwtConfig.refreshSecretOrKey) {
-      throw new Error("Refresh secret or key is not defined");
+    if (!token) {
+      throw new UndefinedRefreshTokenError();
     }
-    return JWT.verifyAsync(token, this.jwtConfig.refreshSecretOrKey);
+
+    if (!this.config.refreshSecretOrKey) {
+      throw new UndefinedRefreshTokenSecretOrKeyError();
+    }
+
+    return JWT.verifyAsync(token, this.config.refreshSecretOrKey);
   }
 }

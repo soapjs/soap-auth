@@ -1,9 +1,9 @@
 import passport from "passport";
 
-import { OAuth2Config } from "../config";
 import { AuthStrategy } from "./auth-strategy";
 import { JwtTools } from "../jwt";
 import { StrategyType } from "./enums";
+import { OAuth2Config } from "./oauth2-strategy.types";
 
 /**
  * Class representing an OAuth2 authentication strategy.
@@ -11,28 +11,50 @@ import { StrategyType } from "./enums";
  * @extends AuthStrategy
  */
 export class OAuth2Strategy extends AuthStrategy {
+  private jwtTools: JwtTools;
   /**
    * Creates an instance of OAuth2Strategy.
    *
    * @param {OAuth2Config} config - The configuration options for the OAuth2 strategy.
-   * @param {JwtTools} jwt - The JWT utility for generating tokens.
    */
-  constructor(private config: OAuth2Config, private jwt: JwtTools) {
+  constructor(
+    private config: OAuth2Config,
+    private jwtId: string,
+    private sessionId: string
+  ) {
     super();
+
+    if (config.jwt) {
+      this.jwtTools = new JwtTools(config.jwt);
+    }
   }
 
   /**
-   * Dynamically loads the OAuth2 strategy.
+   * Dynamically loads the OAuth strategy based on the provider.
    *
-   * @param {string} name - The name of the strategy to load.
+   * @param {string} provider - The name of the OAuth provider.
    * @returns {any} The loaded strategy.
    * @throws {Error} If the strategy cannot be loaded.
    */
-  private getStrategy(name: string) {
+  private getStrategy(provider: string) {
     try {
-      return require(name).Strategy;
+      return require(provider).Strategy;
     } catch (error) {
-      throw new Error(`${name} strategy failure: ${error.message}`);
+      throw new Error(`OAuth2 ${provider} strategy failure: ${error.message}`);
+    }
+  }
+
+  /**
+   * Validates the configuration to ensure no conflicts between session and JWT.
+   *
+   * @throws {Error} If there is a conflict between session and JWT usage.
+   */
+  private validateConfig() {
+    const { jwt, session } = this.config;
+    if (jwt && session) {
+      throw new Error(
+        "Configuration conflict: Both session and JWT are provided. Please use only one method of authentication."
+      );
     }
   }
 
@@ -42,20 +64,22 @@ export class OAuth2Strategy extends AuthStrategy {
   init(): void {
     const OAuth2Strategy = this.getStrategy("passport-oauth2");
     const {
-      authorizationURL,
-      tokenURL,
-      clientID,
-      clientSecret,
-      callbackURL,
-      session,
-      verify,
-      login,
-      logout,
-      scope,
-      useOwnJWT,
-      failureRedirect,
-      successRedirect,
-    } = this.config;
+      jwtTools,
+      config: {
+        authorizationURL,
+        tokenURL,
+        clientID,
+        clientSecret,
+        callbackURL,
+        session,
+        verify,
+        scope,
+        jwt,
+        routes,
+      },
+    } = this;
+
+    this.validateConfig();
 
     passport.use(
       new OAuth2Strategy(
@@ -74,13 +98,13 @@ export class OAuth2Strategy extends AuthStrategy {
           done: any
         ) => {
           try {
-            const user = await verify(accessToken, refreshToken, profile);
-            if (useOwnJWT && this.jwt) {
-              const token = this.jwt.generateToken(user);
-              const refreshToken = this.jwt.generateRefreshToken(user);
-              return done(null, { user, token, refreshToken });
+            const data = await verify(accessToken, refreshToken, profile);
+            if (jwt) {
+              const token = jwtTools.generateToken(data);
+              const refreshToken = jwtTools.generateRefreshToken(data);
+              return done(null, { data, token, refreshToken });
             }
-            return done(null, user);
+            return done(null, data);
           } catch (error) {
             return done(error);
           }
@@ -88,45 +112,15 @@ export class OAuth2Strategy extends AuthStrategy {
       )
     );
 
-    if (useOwnJWT) {
-      this.middlewares.setAuthenticatedOnlyMiddleware(StrategyType.JWT);
+    if (jwt) {
+      this.middlewares.setAuthenticatedOnlyMiddleware(this.jwtId, false);
     } else if (session) {
-      this.middlewares.setAuthenticatedOnlyMiddleware(StrategyType.Session);
+      this.middlewares.setAuthenticatedOnlyMiddleware(this.sessionId);
     }
 
-    if (login) {
-      this.routes.setLoginRoute({
-        ...login,
-        middlewares: [],
-        handler: passport.authenticate(StrategyType.OAuth2, { session }),
-      });
-    }
-
-    const parsedCallbackUrl = new URL(callbackURL);
-
-    this.routes.setLoginCallbackRoute({
-      path: `${parsedCallbackUrl.pathname}${parsedCallbackUrl.search}`,
-      method: "get",
-      middlewares: [
-        passport.authenticate(StrategyType.OAuth2, {
-          failureRedirect,
-          session,
-        }),
-      ],
-      handler: function (req, res, next) {
-        if (successRedirect) {
-          res.redirect(successRedirect);
-        } else {
-          next();
-        }
-      },
-    });
-
-    if (logout) {
-      this.routes.setLogoutRoute({
-        ...logout,
-        middlewares: [],
-        handler: passport.authenticate(StrategyType.OAuth2, { session }),
+    if (routes) {
+      Object.keys(routes).forEach((key) => {
+        this.routes.setRoute(key, routes[key]);
       });
     }
   }

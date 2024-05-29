@@ -1,7 +1,6 @@
 import passport from "passport";
-import { LocalStrategyConfig } from "../config";
 import { AuthStrategy } from "./auth-strategy";
-import { StrategyType } from "./enums";
+import { LocalStrategyConfig } from "./local-strategy.types";
 
 /**
  * Class representing the local authentication strategy for various providers.
@@ -14,7 +13,11 @@ export class LocalStrategy extends AuthStrategy {
    *
    * @param {LocalStrategyConfig} config - The configuration options for the local strategy.
    */
-  constructor(private config: LocalStrategyConfig) {
+  constructor(
+    private config: LocalStrategyConfig,
+    private jwtId: string,
+    private sessionId: string
+  ) {
     super();
   }
 
@@ -33,26 +36,39 @@ export class LocalStrategy extends AuthStrategy {
   }
 
   /**
+   * Validates the configuration to ensure no conflicts between session and JWT.
+   *
+   * @throws {Error} If there is a conflict between session and JWT usage.
+   */
+  private validateConfig() {
+    const { jwt, session } = this.config;
+    if (jwt && session) {
+      throw new Error(
+        "Configuration conflict: Both session and JWT are provided. Please use only one method of authentication."
+      );
+    }
+  }
+
+  /**
    * Initializes the local strategy and sets up the necessary routes and middlewares.
    */
   init(): void {
     const {
-      config: {
-        session,
-        verify,
-        useOwnJWT,
-        login,
-        logout,
-        failureRedirect,
-        successRedirect,
-      },
+      config: { session, verify, jwt, routes },
     } = this;
+
+    this.validateConfig();
+
     const localProviderStrategy = this.getStrategy();
     passport.use(
       new localProviderStrategy(
         async (username: string, password: string, done: any) => {
           try {
             const data = await verify(username, password);
+            // if validation returns an error instead of throwing it
+            if (data instanceof Error) {
+              return done(data);
+            }
             return done(null, data);
           } catch (error) {
             return done(error);
@@ -61,26 +77,16 @@ export class LocalStrategy extends AuthStrategy {
       )
     );
 
-    if (useOwnJWT) {
-      this.middlewares.setAuthenticatedOnlyMiddleware(StrategyType.JWT, false);
-    } else {
-      this.middlewares.setAuthenticatedOnlyMiddleware(
-        StrategyType.Local,
-        session
-      );
+    if (session) {
+      this.middlewares.setAuthenticatedOnlyMiddleware(this.sessionId); // sessionId jest generowany przy tworzeniu strategii jezeli ma opcje session
+    } else if (jwt) {
+      this.middlewares.setAuthenticatedOnlyMiddleware(this.jwtId, false);
     }
 
-    if (login) {
-      const { handler, ...rest } = login;
-      this.routes.setLoginRoute({
-        ...rest,
-        handler:
-          handler || passport.authenticate(StrategyType.Local, { session }),
+    if (routes) {
+      Object.keys(routes).forEach((key) => {
+        this.routes.setRoute(key, routes[key]);
       });
-    }
-
-    if (logout) {
-      this.routes.setLogoutRoute(logout);
     }
   }
 }
