@@ -1,271 +1,223 @@
-# SoapAuth (WIP)
+# SoapAuth
 
-SoapAuth is a comprehensive authentication module based on __Passport.js__, designed to handle various authentication strategies, session management, login, and logout functionalities. This package includes implementations for multiple strategies such as local authentication, OAuth, OAuth2, API key, Bearer, Basic, and Web3 (WiP). It provides a flexible configuration and class-based approach for integrating authentication into your project.
+**SoapAuth** is a flexible authentication and authorization module designed to provide support for various authentication strategies. It is intended to be used alongside a specific framework adapter, serving as the core authentication engine.
 
-## Features
-
-- **Multiple Authentication Strategies**: Includes implementations for Local, OAuth, OAuth2, API key, Bearer, Basic, and Web3 (Work in Progress).
-- **Session Management**: Supports session-based authentication.
-- **JWT Support**: Can use JSON Web Tokens (JWT) for stateless authentication.
-- **Configurable Routes**: Automatically sets up routes for login, logout, and token refresh.
-- **Dynamic Loading**: Only loads necessary dependencies based on the configuration.
+---
 
 ## Installation
 
-This package requires the installation of specific dependencies based on the strategies you plan to use. Add the necessary dependencies to your project's `package.json`.
+```sh
+npm install @soapjs/soap-auth
+```
 
-## Dependencies
+---
 
-- **Passport**: Core authentication middleware.
-- **Passport Strategies**: Depending on the strategies you need (e.g., `passport-local`, `passport-google-oauth20`, `passport-facebook`, etc.).
-- **Web3 (WiP)**: For blockchain-based authentication (e.g., MetaMask).
+## Features
 
-### Example `package.json` Dependencies
+- Multiple authentication strategies (local, OAuth2, JWT, API key, basic auth)
+- Custom authentication strategy support
+- Built-in session management with pluggable session stores
+- Token handling for JWT authentication
+- Extensible architecture with abstract base classes
+- Compatible with framework adapters for seamless integration
 
-```json
-{
-  "dependencies": {
-    "passport": "^0.4.1",
-    "jsonwebtoken": "^8.5.1",
-    "express-session": "^1.17.1"
+---
+
+## Core Classes Overview
+
+### 1. `SoapAuth`
+This is the main entry point for managing authentication. It initializes different strategies based on the provided configuration and provides methods for authentication, authorization, and session management.
+
+### 2. `AuthStrategy`
+The base interface that all strategies must implement. Provides methods such as `authenticate`, `authorize`, `init`, and `logout`.
+
+### 3. `SessionHandler`
+Handles session operations like retrieving, storing, and generating session IDs. It supports multiple session storage mechanisms such as in-memory and file-based stores.
+
+### 4. `TokenBasedAuthStrategy`
+Abstract class for token-based authentication strategies, providing methods for handling access and refresh tokens.
+
+### 5. `CredentialBasedAuthStrategy`
+Abstract class for username-password-based authentication strategies.
+
+### 6. `HttpAuthStrategyFactory` & `SocketAuthStrategyFactory`
+Factories responsible for creating instances of HTTP and socket-based authentication strategies respectively.
+
+---
+
+## Available Authentication Strategies
+
+### 1. Local Strategy
+
+**When to use:**
+- Ideal for applications that require username and password authentication stored locally.
+
+**Configuration example:**
+```typescript
+const authConfig = {
+  http: {
+    local: {
+      usernameField: "email",
+      passwordField: "password",
+      validateUser: async (username, password) => {
+        return username === "user@example.com" && password === "securepass" ? { id: 1, name: "John Doe" } : null;
+      },
+    },
   },
-  "optionalDependencies": {
-    "passport-google-oauth20": "^2.0.0",
-    "passport-facebook": "^3.0.0",
-    "passport-local": "^1.0.0",
-    "passport-http-bearer": "^1.0.1",
-    "passport-http": "^0.3.0",
-    "web3": "^1.3.0"
+};
+```
+
+### 2. OAuth2 Strategy
+
+**When to use:**
+- Suitable for social logins (Google, Facebook, Twitter, etc.).
+
+**Configuration example:**
+```typescript
+const authConfig = {
+  http: {
+    oauth2: {
+      google: {
+        clientId: "your-client-id",
+        clientSecret: "your-client-secret",
+        redirectUri: "https://yourapp.com/auth/callback",
+        scope: "openid profile email",
+        endpoints: {
+          authorizationUrl: "https://accounts.google.com/o/oauth2/auth",
+          tokenUrl: "https://oauth2.googleapis.com/token",
+        },
+      },
+    },
+  },
+};
+```
+
+### 3. JWT Strategy
+
+**When to use:**
+- Suitable for stateless authentication where tokens are passed between the client and server.
+
+**Configuration example:**
+```typescript
+const authConfig = {
+  http: {
+    jwt: {
+      access: {
+        secretKey: "your-secret-key",
+        expiresIn: "1h",
+        signOptions: { algorithm: "HS256" },
+      },
+    },
+  },
+};
+```
+
+### 4. API Key Strategy
+
+**When to use:**
+- Best for authenticating external services using static API keys.
+
+**Configuration example:**
+```typescript
+const authConfig = {
+  http: {
+    apiKey: {
+      extractApiKey: (context) => context.headers["x-api-key"],
+      retrieveUserByApiKey: async (apiKey) => {
+        return apiKey === "valid-api-key" ? { id: 1, role: "admin" } : null;
+      },
+    },
+  },
+};
+```
+
+### 5. Basic Authentication
+
+**When to use:**
+- Useful for simple username-password authentication with minimal overhead.
+
+**Configuration example:**
+```typescript
+const authConfig = {
+  http: {
+    basic: {
+      validateUser: async (username, password) => {
+        return username === "admin" && password === "password" ? { id: 1, role: "admin" } : null;
+      },
+    },
+  },
+};
+```
+
+---
+
+## Using SoapAuth
+
+```typescript
+import { SoapAuth } from "@soapjs/soap-auth";
+
+const auth = new SoapAuth(authConfig);
+await auth.init();
+
+const user = await auth.authenticate("local", { email: "user@example.com", password: "securepass" });
+console.log("Authenticated user:", user);
+```
+
+---
+
+## Creating a Custom Authentication Strategy
+
+To create a custom strategy, extend the appropriate base class depending on the authentication type:
+
+1. **For token-based strategies:** Extend `TokenBasedAuthStrategy`.
+2. **For credential-based strategies:** Extend `CredentialBasedAuthStrategy`.
+3. **For generic implementations:** Extend `BaseAuthStrategy` directly.
+
+**Example:**
+```typescript
+class CustomAuthStrategy extends TokenBasedAuthStrategy {
+  async authenticate(context) {
+    const token = context.headers.authorization;
+    if (token === "valid-token") {
+      return { user: { id: 1, role: "admin" }, tokens: { accessToken: token } };
+    }
+    throw new Error("Invalid token");
   }
 }
 ```
 
-## Strategies
+---
 
-### Local Strategy
+## Session Management
 
-- **Description**: Uses a form with username and password for authentication.
-- **Use Case**: Typical web applications.
-- **Session**: Yes.
-- **JWT**: Optionally.
-- **Routes**: `login`, `logout`.
+SoapAuth supports session management through the `SessionHandler` class. The session can be stored using memory, files, or external databases via adapters.
 
-### Basic Strategy
-
-- **Description**: Uses the `Authorization` header with Base64-encoded username and password.
-- **Use Case**: APIs where the client is a program.
-- **Session**: Optionally.
-- **JWT**: No.
-- **Routes**: None needed.
-
-### Bearer Strategy
-
-- **Description**: Uses the `Authorization` header with a token (e.g., JWT).
-- **Use Case**: Stateless API authentication.
-- **Session**: No.
-- **JWT**: Yes.
-- **Routes**: `login`, `logout`, `refresh-token`.
-
-### OAuth Strategy
-
-- **Description**: Uses OAuth for authentication with external providers (e.g., Google, Facebook).
-- **Use Case**: Allowing users to log in with their social media accounts.
-- **Session**: Optionally.
-- **JWT**: Optionally.
-- **Routes**: `login`, `logout`, `callback`, `refresh-token`.
-
-### OAuth2 Strategy
-
-- **Description**: General OAuth2 strategy for any OAuth2 provider.
-- **Use Case**: Integrating with OAuth2 providers not covered by specific strategies.
-- **Session**: Optionally.
-- **JWT**: Optionally.
-- **Routes**: `login`, `logout`, `callback`, `refresh-token`.
-
-### API Key Strategy
-
-- **Description**: Uses API keys passed in headers, query parameters, or request body.
-- **Use Case**: APIs requiring API key-based authentication.
-- **Session**: No.
-- **JWT**: No.
-- **Routes**: None needed.
-
-### Web3 Strategy
-
-- **Description**: Uses Web3 for authentication, typically involving signing messages with a wallet (e.g., MetaMask).
-- **Use Case**: Decentralized applications (dApps), blockchain integration.
-- **Session**: Optionally.
-- **JWT**: Optionally.
-- **Routes**: `login`, `logout`.
-
-## Configuration Example
-
-Here's an example configuration for the authentication module:
-
+**Example Session Configuration:**
 ```typescript
-import { AuthModuleConfig } from './types';
-
-/**
- * Example configuration for the authentication module
- */
-const config: AuthModuleConfig = {
-  jwt: {
-    secretOrKey: process.env.JWT_SECRET!,
-    expiresIn: '1h',
-    refreshSecretOrKey: process.env.JWT_REFRESH_SECRET!,
-    refreshExpiresIn: '7d',
-    validate: async (payload) => {
-      return true;
-    },
-    storageMethod: 'cookie',
-    cookieOptions: {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      maxAge: 3600000,
-    },
-  },
+const authConfig = {
   session: {
-    secret: process.env.SESSION_SECRET!,
-    resave: false,
-    saveUninitialized: false,
-    serializeUser: (user, done) => {
-      done(null, user.id);
-    },
-    deserializeUser: (id, done) => {
-      done(null, { id });
-    },
-  },
-  strategies: {
-    local: {
-      verify: async (username, password) => {
-        return { id: 1, username };
-      },
-      session: true,
-    },
-    oauth: {
-      google: {
-        clientID: process.env.GOOGLE_CLIENT_ID!,
-        clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-        callbackURL: 'http://localhost:3000/auth/google/callback',
-        scope: ['profile', 'email'],
-        useOwnJWT: true,
-        verify: async (accessToken, refreshToken, profile) => {
-          return { id: profile.id, email: profile.emails[0].value };
-        },
-        session: true,
-      },
-      facebook: {
-        clientID: process.env.FACEBOOK_CLIENT_ID!,
-        clientSecret: process.env.FACEBOOK_CLIENT_SECRET!,
-        callbackURL: 'http://localhost:3000/auth/facebook/callback',
-        scope: ['email'],
-        useOwnJWT: false,
-        verify: async (accessToken, refreshToken, profile) => {
-          return { id: profile.id, email: profile.emails[0].value };
-        },
-        session: true,
-      },
-    },
-    oauth2: {
-      genericProvider: {
-        authorizationURL: 'https://example.com/oauth/authorize',
-        tokenURL: 'https://example.com/oauth/token',
-        clientID: 'YOUR_CLIENT_ID',
-        clientSecret: 'YOUR_CLIENT_SECRET',
-        callbackURL: 'http://localhost:3000/auth/genericProvider/callback',
-        scope: ['profile', 'email'],
-        useOwnJWT: true,
-        verify: async (accessToken, refreshToken, profile) => {
-          return { id: profile.id, email: profile.emails[0].value };
-        },
-        session: true,
-      },
-    },
-    apiKey: {
-      headerName: 'x-api-key',
-      queryParamName: 'api_key',
-      bodyParamName: 'apiKey',
-      validate: async (apiKey) => {
-        return apiKey === 'my-secure-api-key';
-      },
-      session: false,
-    },
-    bearer: {
-      verify: (token, done) => {
-        done(null, { id: 1, username: 'bearer_user' });
-      },
-      session: false,
-    },
-    basic: {
-      verify: (username, password, done) => {
-        done(null, { id: 1, username });
-      },
-      session: false,
-    },
-    web3: {
-      verify: (address, signature, done) => {
-        done(null, { id: 1, address });
-      },
-      session: true,
-    },
+    secret: "your-session-secret",
+    sessionKey: "my-session-id",
+    store: new MemorySessionStore(),
   },
 };
-
-export default config;
 ```
 
-## Usage Example
+---
 
-Here's an example of how to use the SoapAuth module in your project:
+## Framework Integration
+
+SoapAuth is designed to work with various frameworks such as Express, Koa, Fastify, and more through dedicated adapters.
 
 ```typescript
-import { Container } from 'inversify';
-import * as SoapExpress from '@soapjs/soap-express';
-import * as SoapAuth from '@soapjs/soap-auth';
-import config from './config';
-
-export const bootstrap = async () => {
-  const container = new Container();
-  const dependencies = new MyDependencies(container);
-  const router = new MyRouter(container);
-  const soapAuth = new SoapAuth({
-    jwt: config.jwt,
-    session: config.session,
-    strategies: config.strategies,
-  });
-
-  const { httpServer } = await SoapExpress.bootstrap(
-    config.api,
-    dependencies,
-    router,
-    {
-      auth: soapAuth,
-      logger: winston.createLogger(config.logger),
-      errorHandler,
-      httpErrorHandler,
-    }
-  );
-};
-
-bootstrap();
+// basic example
+app.use(async (req, res, next) => {
+  try {
+    const user = await auth.authenticate("jwt", req);
+    req.user = user;
+    next();
+  } catch (error) {
+    res.status(401).send("Unauthorized");
+  }
+});
 ```
-
-## Notes
-
-This package is designed to be used with HTTP but will be extended in the future. It provides a robust and flexible authentication solution for modern web applications and APIs.
-
-## Issues
-If you encounter any issues, please feel free to report them [here](https://github.com/soapjs/soap/issues/new/choose).
-
-## Contact
-For any questions, collaboration interests, or support needs, you can contact us through the following:
-
-- Official:
-  - Email: [contact@soapjs.com](mailto:contact@soapjs.com)
-  - Website: https://docs.soapjs.com
-- Radoslaw Kamysz:
-  - Email: [radoslaw.kamysz@gmail.com](mailto:radoslaw.kamysz@gmail.com)
-  - Warpcast: [@k4mr4ad](https://warpcast.com/k4mr4ad)
-  - Twitter: [@radoslawkamysz](https://x.com/radoslawkamysz)
-## License
-SoapAuth is licensed under the MIT License.

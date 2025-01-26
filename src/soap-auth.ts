@@ -1,136 +1,156 @@
-import * as Soap from "@soapjs/soap";
+import { HttpAuthStrategyFactory } from "./factories/http-auth-strategy.factory";
+import { SocketAuthStrategyFactory } from "./factories/socket-auth-strategy.factory";
+import { AuthResult, AuthStrategy, SoapAuthConfig } from "./types";
 
-import { SoapAuthConfig } from "./config/config";
-import { JwtRegistry, JwtTools, TokenConfig } from "./jwt";
-import { SessionConfig, SessionTools } from "./session";
-import {
-  ApiKeyStrategy,
-  BasicStrategy,
-  LocalStrategy,
-  OAuth2Strategy,
-  StrategyType,
-  TokenStrategy,
-} from "./strategies";
+/**
+ * Core class for soap-auth that manages and initializes various authentication strategies.
+ */
+export class SoapAuth {
+  private requiredStrategyMethods = ["authenticate", "init"];
+  private httpStrategies = new Map<string, AuthStrategy>();
+  private socketStrategies = new Map<string, AuthStrategy>();
 
-export class SoapAuth extends Soap.ApiAuthModule {
-  // private jwtRegistry?: JwtRegistry = new JwtRegistry();
-  private jwtRegistry?: Map<string, JwtTools> = new Map<string, JwtTools>();
-  private sessionTools?: SessionTools;
+  /**
+   * Constructs an instance of SoapAuth, setting up strategies based on provided configuration.
+   * @param {SoapAuthConfig} config - Configuration object specifying strategies and their options.
+   */
+  constructor(config: SoapAuthConfig) {
+    const httpFactory = new HttpAuthStrategyFactory(config.logger);
+    this.httpStrategies = httpFactory.createStrategies(config);
 
-  constructor(private config: SoapAuthConfig) {
-    super();
-    this.strategies = new Map<string, Soap.ApiAuthStrategy>();
-
-    if (config.local) {
-      const jwtId = this.addJwtStrategy(StrategyType.Local, config.local);
-      const sessionId = this.addSessionStrategy(
-        StrategyType.Local,
-        config.local
-      );
-      this.strategies.set(
-        StrategyType.Local,
-        new LocalStrategy(config.local, jwtId, sessionId)
-      );
-    }
-
-    if (config.oauth2) {
-      for (const provider in config.oauth2) {
-        const jwtId = this.addJwtStrategy(provider, config.local);
-        const sessionId = this.addSessionStrategy(provider, config.local);
-        const strategy = new OAuth2Strategy(
-          config.oauth2[provider],
-          jwtId,
-          sessionId
-        );
-        this.strategies.set(provider, strategy);
-      }
-    }
-
-    if (config.apiKey) {
-      const jwtId = this.addJwtStrategy(StrategyType.ApiKey, config.local);
-      const sessionId = this.addSessionStrategy(
-        StrategyType.ApiKey,
-        config.local
-      );
-      this.strategies.set(
-        StrategyType.ApiKey,
-        new ApiKeyStrategy(config.apiKey, jwtId, sessionId)
-      );
-    }
-
-    if (config.basic) {
-      const jwtId = this.addJwtStrategy(StrategyType.Basic, config.local);
-      const sessionId = this.addSessionStrategy(
-        StrategyType.Basic,
-        config.local
-      );
-      this.strategies.set(
-        StrategyType.Basic,
-        new BasicStrategy(config.basic, jwtId, sessionId)
-      );
-    }
-
-    if (config.token) {
-      this.strategies.set(StrategyType.Token, new TokenStrategy(config.token));
-    }
-
-    if (config.custom) {
-      for (const provider in config.custom) {
-        // const jwtId = this.addJwtStrategy(provider, config.local);
-        // const sessionId = this.addSessionStrategy(
-        //   provider,
-        //   config.local
-        // );
-        this.strategies.set(provider, config.custom[provider]);
-      }
-    }
-
-    if (config.web3) {
-      // ...
-    }
+    const socketFactory = new SocketAuthStrategyFactory(config.logger);
+    this.socketStrategies = socketFactory.createStrategies(config);
   }
 
-  private addJwtStrategy(type: string, config: { jwt?: TokenConfig }) {
-    if (config.jwt) {
-      const id = type === "jwt" ? "jwt" : `jwt-${type}`;
-      this.strategies.set(id, new TokenStrategy({ jwt: config.jwt }, id));
-      return id;
-    }
+  /**
+   * Determines whether the provided object conforms to the AuthStrategy interface.
+   * @param {unknown} strategy - The object to check.
+   * @returns {boolean} True if the object implements required methods, otherwise false.
+   */
+  private isAuthStrategy(strategy: unknown) {
+    const isValidStrategy = this.requiredStrategyMethods.every(
+      (method) => typeof strategy[method] === "function"
+    );
+
+    return isValidStrategy;
   }
-  private addSessionStrategy(
+
+  /**
+   * Adds an authentication strategy to the specified strategies map.
+   * @param {Map<string, AuthStrategy>} strategiesMap - The map of authentication strategies.
+   * @param {string} type - The identifier for the strategy type.
+   * @param {AuthStrategy | undefined} strategyInstance - The strategy instance to add.
+   */
+  addStrategy(
+    strategiesMap: Map<string, AuthStrategy>,
     type: string,
-    config: { session?: SessionConfig }
+    strategyInstance: AuthStrategy | undefined
   ) {
-    if (config.session) {
-      const id = type === "session" ? "session" : `session-${type}`;
-      this.strategies.set(
-        id,
-        new SessionStrategy({ session: config.session }, id)
-      );
-      return id;
+    if (this.isAuthStrategy(strategyInstance)) {
+      strategiesMap.set(type, strategyInstance);
     }
   }
 
-  init<AuthComponent = any>(options?: any): AuthComponent[] {
-    const components: AuthComponent[] = [];
-    // if (this.config.sessionOptions) {
-    //   components.push(passport.session());
+  /**
+   * Removes an authentication strategy from the registered strategies.
+   * @param {string} type - The identifier for the strategy type.
+   * @returns {boolean} True if the strategy was removed, otherwise false.
+   */
+  removeStrategy(type: string): boolean {
+    if (this.httpStrategies.has(type)) {
+      this.httpStrategies.delete(type);
+      return true;
+    }
 
-    //   if (this.config.sessionOptions.serialize) {
-    //     passport.serializeUser(this.config.sessionOptions.serialize);
-    //   }
+    if (this.socketStrategies.has(type)) {
+      this.socketStrategies.delete(type);
+      return true;
+    }
 
-    //   if (this.config.sessionOptions.deserialize) {
-    //     passport.deserializeUser(this.config.sessionOptions.deserialize);
-    //   }
-    // }
+    return false;
+  }
 
-    // components.push(passport.initialize(options) as InitializedType);
+  /**
+   * Checks if a specific authentication strategy is registered.
+   * @param {string} type - The identifier for the strategy type.
+   * @returns {boolean} True if the strategy exists, otherwise false.
+   */
+  hasStrategy(type: string): boolean {
+    return this.httpStrategies.has(type) || this.socketStrategies.has(type);
+  }
 
-    this.strategies.forEach((strategy) => {
-      strategy.init();
-    });
+  /**
+   * Retrieves an authentication strategy by name from either HTTP or WebSocket strategies.
+   *
+   * @param {string} strategyName - The strategy identifier.
+   * @returns {AuthStrategy | undefined} The authentication strategy or undefined if not found.
+   */
+  getStrategy(
+    strategyName: string,
+    layer: "http" | "socket" = "http"
+  ): AuthStrategy | undefined {
+    return layer === "http"
+      ? this.httpStrategies.get(strategyName)
+      : this.socketStrategies.get(strategyName);
+  }
 
-    return components;
+  /**
+   * Lists all registered authentication strategies.
+   * @returns {string[]} An array containing the names of registered strategies.
+   */
+  listStrategies(): string[] {
+    return [...this.httpStrategies.keys(), ...this.socketStrategies.keys()];
+  }
+
+  /**
+   * Initializes all registered authentication strategies.
+   *
+   * @param {boolean} [sequential=false] - Whether to initialize strategies sequentially.
+   * @throws {Error} Throws an error if any strategy fails to initialize.
+   */
+  async init(sequential = false) {
+    const strategies = [
+      ...this.httpStrategies.values(),
+      ...this.socketStrategies.values(),
+    ];
+
+    if (sequential) {
+      for (const strategy of strategies) {
+        await strategy.init();
+      }
+    } else {
+      await Promise.all(strategies.map((strategy) => strategy.init()));
+    }
+  }
+
+  /**
+   * Authenticates a request based on the given strategy.
+   *
+   * @param {string} strategyName - The authentication strategy name.
+   * @param {any} context - The authentication context.
+   * @returns {Promise<AuthResult<any>>} The authentication result.
+   */
+  async authenticate(
+    strategyName: string,
+    context: any
+  ): Promise<AuthResult<any>> {
+    const strategy = this.getStrategy(strategyName);
+    if (!strategy) {
+      throw new Error(`Authentication strategy "${strategyName}" not found.`);
+    }
+    return strategy.authenticate(context);
+  }
+
+  /**
+   * Logs out a user based on the strategy.
+   *
+   * @param {string} strategyName - The authentication strategy name.
+   * @param {any} context - The authentication context.
+   */
+  async logout(strategyName: string, context: any): Promise<void> {
+    const strategy = this.getStrategy(strategyName);
+    if (strategy?.logout) {
+      await strategy.logout(context);
+    }
   }
 }
