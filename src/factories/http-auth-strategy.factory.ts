@@ -2,7 +2,7 @@ import { OAuth2Strategy } from "../strategies/oauth2/oauth2.strategy";
 import { ApiKeyStrategy } from "../strategies/api-key/api-key.strategy";
 import { JwtStrategy } from "../strategies/jwt/jwt.strategy";
 import { BasicStrategy } from "../strategies/basic/basic.strategy";
-import { AuthStrategy, SoapAuthConfig, TokenHandlerConfig } from "../types";
+import { AuthStrategy, SoapAuthConfig, TokenConfig } from "../types";
 import { AuthStrategyFactory } from "./auth-strategy.factory";
 import { resolveConfig } from "../tools/tools";
 import { LocalStrategy } from "../strategies/local/local.strategy";
@@ -30,14 +30,8 @@ export class HttpAuthStrategyFactory extends AuthStrategyFactory {
           provider,
           new OAuth2Strategy(
             config.http.oauth2[provider],
-            resolveConfig<TokenHandlerConfig>(
-              config.http.oauth2[provider].tokens.access,
-              config.tokens.access
-            ),
-            resolveConfig<TokenHandlerConfig>(
-              config.http.oauth2[provider].tokens.refresh,
-              config.tokens.refresh
-            ),
+            config.http.oauth2[provider].accessToken,
+            config.http.oauth2[provider].refreshToken,
             this.getSessionHandler(
               config.http.oauth2[provider].session,
               config.session

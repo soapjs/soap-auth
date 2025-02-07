@@ -346,7 +346,7 @@ export abstract class CredentialBasedAuthStrategy<
     account: any,
     ...args: unknown[]
   ): Promise<boolean> {
-    if (await this.config.isAccountLocked?.(account, ...args)) {
+    if (await this.config.lock.isAccountLocked?.(account, ...args)) {
       throw new AccountLockedError();
     }
 

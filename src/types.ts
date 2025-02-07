@@ -146,20 +146,18 @@ export interface AuthResultConfig<TContext = unknown, TUser = unknown> {
 }
 
 export interface SecurityConfig {
-  security?: {
-    maxFailedLoginAttempts?: number;
-    lockoutDuration?: number;
-    notifyOnLockout?: (account: any) => Promise<void>;
-  };
+  maxFailedLoginAttempts?: number;
+  lockoutDuration?: number;
+  notifyOnLockout?: (account: any) => Promise<void>;
 }
 
-export interface BaseAuthStrategyConfig<TContext = unknown, TUser = unknown>
-  extends AccountLockConfig<TContext>,
-    RateLimitConfig,
-    RoleAuthorizationConfig<TUser>,
-    SecurityConfig {
+export interface BaseAuthStrategyConfig<TContext = unknown, TUser = unknown> {
   mfa?: MfaConfig<TUser, TContext>;
   session?: SessionConfig;
+  role?: RoleAuthorizationConfig<TUser>;
+  rateLimit?: RateLimitConfig;
+  security?: SecurityConfig;
+  lock?: AccountLockConfig<TContext>;
 }
 
 export interface AuditLoggingConfig<TContext = unknown> {
@@ -283,9 +281,8 @@ export interface CredentialBasedAuthStrategyConfig<
 export interface TokenBasedAuthStrategyConfig<
   TContext = unknown,
   TUser = unknown
-> extends BaseAuthStrategyConfig<TContext, TUser>,
-    TokenRotationConfig<TUser> {
-  tokens?: TokenHandlersConfig;
+> extends BaseAuthStrategyConfig<TContext, TUser> {
+  rotation?: TokenRotationConfig<TUser>;
   login: {
     retrieveUserData: (identifier: string) => Promise<TUser | null>;
   } & AuthResultConfig<TContext, TUser>;
@@ -293,7 +290,6 @@ export interface TokenBasedAuthStrategyConfig<
 }
 
 export interface TokenRotationConfig<TUser = unknown> {
-  enableRotation?: boolean;
   maxRotations?: number;
   storeUsedTokens?: boolean;
   getRefreshToken?: (user: TUser) => Promise<string>;
@@ -496,11 +492,6 @@ export interface SoapAuthConfig<TContext = unknown, TUser = unknown> {
   session?: SessionConfig;
 
   /**
-   * Configuration for token management applicable to all strategies unless overridden.
-   * @type {TokenHandlersConfig | undefined}
-   */
-  tokens?: TokenHandlersConfig;
-  /**
    * Configuration for http strategies.
    * @type {SoapHttpAuthConfig | undefined}
    */
@@ -686,7 +677,7 @@ export interface StorageContext {
 /**
  * Interface defining the configuration and operations for managing tokens.
  */
-export interface TokenHandlerConfig {
+export interface TokenConfig {
   /**
    * The secret key used to sign tokens.
    * Can be a string or a Buffer (in case of asymmetric keys).
@@ -781,9 +772,4 @@ export interface TokenHandlerConfig {
    * @returns {Promise<string>} A promise that resolves with the new rotated token.
    */
   rotate?: (oldToken: string) => Promise<string>;
-}
-
-export interface TokenHandlersConfig {
-  access: TokenHandlerConfig;
-  refresh?: TokenHandlerConfig;
 }

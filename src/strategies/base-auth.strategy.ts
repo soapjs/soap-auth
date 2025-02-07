@@ -52,7 +52,7 @@ export abstract class BaseAuthStrategy<TContext = unknown, TUser = unknown>
     account: any,
     ...args: unknown[]
   ): Promise<boolean> {
-    if (await this.config.isAccountLocked?.(account, ...args)) {
+    if (await this.config.lock.isAccountLocked?.(account, ...args)) {
       throw new AccountLockedError();
     }
 
@@ -60,10 +60,10 @@ export abstract class BaseAuthStrategy<TContext = unknown, TUser = unknown>
   }
 
   protected async isAuthorized(user: TUser): Promise<boolean> {
-    if (this.config.authorizeByRoles && this.config.roles) {
-      const hasAccess = await this.config.authorizeByRoles(
+    if (this.config.role.authorizeByRoles && this.config.role.roles) {
+      const hasAccess = await this.config.role.authorizeByRoles(
         user,
-        this.config.roles
+        this.config.role.roles
       );
       if (!hasAccess) {
         throw new UnauthorizedRoleError();
@@ -79,8 +79,8 @@ export abstract class BaseAuthStrategy<TContext = unknown, TUser = unknown>
    */
   protected async checkRateLimit(data: unknown): Promise<void> {
     if (
-      this.config.checkRateLimit &&
-      (await this.config.checkRateLimit(data))
+      this.config.rateLimit.checkRateLimit &&
+      (await this.config.rateLimit.checkRateLimit(data))
     ) {
       throw new RateLimitExceededError();
     }

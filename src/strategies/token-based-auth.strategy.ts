@@ -1,7 +1,7 @@
 import * as Soap from "@soapjs/soap";
 import { AuthResult, TokenBasedAuthStrategyConfig } from "../types";
 import { BaseAuthStrategy } from "./base-auth.strategy";
-import { TokenHandlerConfig } from "../types";
+import { TokenConfig } from "../types";
 import {
   MissingTokenError,
   InvalidTokenError,
@@ -24,15 +24,15 @@ export abstract class TokenBasedAuthStrategy<
    * Constructs an instance of TokenBasedAuthStrategy.
    *
    * @param {TokenBasedAuthStrategyConfig<TContext, TUser>} config - Configuration options for the strategy.
-   * @param {TokenHandlerConfig} accessTokenHandler - Handler for access tokens.
-   * @param {TokenHandlerConfig} [refreshTokenHandler] - Optional handler for refresh tokens.
+   * @param {TokenConfig} accessTokenConfig - Handler for access tokens.
+   * @param {TokenConfig} [refreshTokenConfig] - Optional handler for refresh tokens.
    * @param {SessionHandler} [session] - Optional session management configuration.
    * @param {Soap.Logger} [logger] - Optional logger instance.
    */
   constructor(
     protected config: TokenBasedAuthStrategyConfig<TContext, TUser>,
-    protected accessTokenHandler: TokenHandlerConfig,
-    protected refreshTokenHandler?: TokenHandlerConfig,
+    protected accessTokenConfig?: TokenConfig,
+    protected refreshTokenConfig?: TokenConfig,
     protected session?: SessionHandler,
     protected logger?: Soap.Logger
   ) {
@@ -60,13 +60,14 @@ export abstract class TokenBasedAuthStrategy<
    */
   async authenticate(context: TContext): Promise<AuthResult<TUser>> {
     try {
-      let accessToken = await this.accessTokenHandler.retrieve?.(context);
+      let accessToken = await this.accessTokenConfig.retrieve?.(context);
+      let refreshToken;
 
       await this.checkRateLimit(context);
 
       if (accessToken) {
         try {
-          const decoded = await this.accessTokenHandler.verify?.(accessToken);
+          const decoded = await this.accessTokenConfig.verify?.(accessToken);
           const user = await this.retrieveUser(decoded);
           if (!user) {
             throw new UserNotFoundError();
@@ -80,16 +81,23 @@ export abstract class TokenBasedAuthStrategy<
         }
       }
 
-      // Attempt to use refresh token if access token is expired or missing
-      const refreshToken = await this.refreshTokenHandler?.retrieve?.(context);
-      if (!refreshToken) {
-        throw new MissingTokenError();
+      if (this.refreshTokenConfig) {
+        // Attempt to use refresh token if access token is expired or missing
+        refreshToken = await this.refreshTokenConfig?.retrieve?.(context);
+        if (!refreshToken) {
+          throw new MissingTokenError("Refresh");
+        }
+
+        accessToken = await this.refreshTokenConfig?.rotate?.(refreshToken);
+
+        if (!accessToken) {
+          throw new MissingTokenError("Access");
+        }
       }
 
-      accessToken = await this.refreshTokenHandler?.rotate?.(refreshToken);
-      this.accessTokenHandler.embed?.(context, accessToken);
+      this.accessTokenConfig.embed?.(context, accessToken);
 
-      const decoded = await this.accessTokenHandler.verify?.(accessToken);
+      const decoded = await this.accessTokenConfig.verify?.(accessToken);
       const user = await this.retrieveUser(decoded);
 
       if (!user) {
@@ -112,9 +120,9 @@ export abstract class TokenBasedAuthStrategy<
    */
   async logout(context: TContext): Promise<void> {
     try {
-      await this.accessTokenHandler.remove?.(context);
-      if (this.refreshTokenHandler) {
-        await this.refreshTokenHandler.remove?.(context);
+      await this.accessTokenConfig.remove?.(context);
+      if (this.refreshTokenConfig) {
+        await this.refreshTokenConfig.remove?.(context);
       }
       await this.config.logout.onSuccess?.(context);
       this.logger?.info("User logged out successfully.");
@@ -138,26 +146,26 @@ export abstract class TokenBasedAuthStrategy<
   ): Promise<{ accessToken: string; refreshToken?: string }> {
     const payload = { userId: (user as any).id, roles: (user as any).roles };
 
-    const accessToken = this.accessTokenHandler.generate?.(payload);
+    const accessToken = this.accessTokenConfig.generate?.(payload);
     if (!accessToken) throw new Error("Failed to generate access token.");
 
-    await this.accessTokenHandler.store?.(
+    await this.accessTokenConfig.store?.(
       accessToken,
       user,
-      +this.accessTokenHandler.expiresIn
+      +this.accessTokenConfig.expiresIn
     );
-    this.accessTokenHandler.embed?.(context, accessToken);
+    this.accessTokenConfig.embed?.(context, accessToken);
 
     let refreshToken;
-    if (this.refreshTokenHandler) {
-      refreshToken = this.refreshTokenHandler.generate?.(payload);
+    if (this.refreshTokenConfig) {
+      refreshToken = this.refreshTokenConfig.generate?.(payload);
       if (refreshToken) {
-        await this.refreshTokenHandler.store?.(
+        await this.refreshTokenConfig.store?.(
           refreshToken,
           user,
-          +this.refreshTokenHandler.expiresIn
+          +this.refreshTokenConfig.expiresIn
         );
-        this.refreshTokenHandler.embed?.(context, refreshToken);
+        this.refreshTokenConfig.embed?.(context, refreshToken);
       }
     }
 
@@ -175,19 +183,19 @@ export abstract class TokenBasedAuthStrategy<
     context: TContext
   ): Promise<{ accessToken: string; refreshToken?: string }> {
     try {
-      if (!this.refreshTokenHandler) {
+      if (!this.refreshTokenConfig) {
         throw new Error("Refresh token handler is not configured.");
       }
 
-      const refreshToken = await this.refreshTokenHandler.retrieve?.(context);
+      const refreshToken = await this.refreshTokenConfig.retrieve?.(context);
       if (!refreshToken) {
         throw new MissingTokenError("Refresh");
       }
 
-      const newAccessToken = await this.refreshTokenHandler.rotate?.(
+      const newAccessToken = await this.refreshTokenConfig.rotate?.(
         refreshToken
       );
-      this.accessTokenHandler.embed?.(context, newAccessToken);
+      this.accessTokenConfig.embed?.(context, newAccessToken);
 
       return { accessToken: newAccessToken, refreshToken };
     } catch (error) {

@@ -1,6 +1,5 @@
 import * as Soap from "@soapjs/soap";
 import { AuthError, InvalidCredentialsError } from "../../errors";
-import { TokenHandlerConfig, TokenHandlersConfig } from "../../types";
 import { CredentialBasedAuthStrategy } from "../credential-based-auth.strategy";
 import { LocalStrategyConfig } from "./local.types";
 import { SessionHandler } from "../../session/session-handler";

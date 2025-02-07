@@ -1,4 +1,7 @@
-import { TokenBasedAuthStrategyConfig, TokenHandlerConfig } from "../../types";
+import {
+  TokenBasedAuthStrategyConfig,
+  TokenConfig,
+} from "../../types";
 
 /**
  * Options for verifying a token.
@@ -113,17 +116,32 @@ export interface JwtSignOptions {
   allowUnsafe?: boolean;
 }
 
-export type JwtAccessTokenHandlerConfig = {
+export type JwtAccessTokenConfig = {
   verifyOptions?: JwtVerifyOptions;
   signOptions: JwtSignOptions;
-} & TokenHandlerConfig;
+} & TokenConfig;
 
-export type JwtRefreshTokenHandlerConfig = {
+export type JwtRefreshTokenConfig = {
   verifyOptions?: JwtVerifyOptions;
   signOptions: JwtSignOptions;
-} & TokenHandlerConfig;
+} & TokenConfig;
 
-export type JwtConfig<TContext = unknown, TUser = unknown> = {
-  access: JwtAccessTokenHandlerConfig;
-  refresh?: JwtRefreshTokenHandlerConfig;
-} & TokenBasedAuthStrategyConfig<TContext, TUser>;
+export interface JwtConfig<TContext = unknown, TUser = unknown>
+  extends TokenBasedAuthStrategyConfig<TContext, TUser> {
+  accessToken: JwtAccessTokenConfig;
+  refreshToken?: JwtRefreshTokenConfig;
+  routes?: {
+    login?: {
+      path: string; // Default "/auth/login"
+      method?: "POST" | "GET"; // Default "POST"
+    };
+    logout?: {
+      path: string; // Default "/auth/logout"
+      method?: "POST" | "GET";
+    };
+    refresh?: {
+      path: string; // Default "/auth/refresh"
+      method?: "POST" | "GET";
+    };
+  };
+}

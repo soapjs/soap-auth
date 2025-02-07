@@ -6,7 +6,7 @@ import {
   MissingAuthorizationCodeError,
   UserNotFoundError,
 } from "../../errors";
-import { SessionConfig, TokenHandlerConfig, AuthResult } from "../../types";
+import { TokenConfig, AuthResult } from "../../types";
 import { TokenBasedAuthStrategy } from "../token-based-auth.strategy";
 import { OAuth2StrategyConfig } from "./oauth2.types";
 import { OAuth2Tools } from "./oauth2.tools";
@@ -24,13 +24,13 @@ export class OAuth2Strategy<
 > extends TokenBasedAuthStrategy<TContext, TUser> {
   constructor(
     protected config: OAuth2StrategyConfig<TContext, TUser>,
-    protected accessTokenHandler: TokenHandlerConfig,
-    protected refreshTokenHandler?: TokenHandlerConfig,
+    protected accessTokenConfig: TokenConfig,
+    protected refreshTokenConfig?: TokenConfig,
     protected session?: SessionHandler,
     protected logger?: Soap.Logger
   ) {
-    super(config, accessTokenHandler, refreshTokenHandler, session, logger);
-    this.config.scope = this.config.scope ?? "openid profile email";
+    super(config, accessTokenConfig, refreshTokenConfig, session, logger);
+    this.config.scope = this.config.scope ?? "email";
   }
 
   /**
@@ -43,18 +43,11 @@ export class OAuth2Strategy<
     try {
       let user;
       let refreshToken;
-      let accessToken = await this.accessTokenHandler.retrieve?.(context);
-
-      // Check if user session exists
-      // user = await this.config.retrieveUserSession?.(context);
-      // if (user) {
-      //   this.logger?.info("User found in session storage.");
-      //   return { user, tokens: { accessToken, refreshToken } };
-      // }
+      let accessToken = await this.accessTokenConfig.retrieve?.(context);
 
       if (!accessToken) {
         this.logger?.info("No access token found, checking for refresh token.");
-        refreshToken = await this.refreshTokenHandler?.retrieve?.(context);
+        refreshToken = await this.refreshTokenConfig?.retrieve?.(context);
 
         if (refreshToken) {
           this.logger?.info(
@@ -63,10 +56,10 @@ export class OAuth2Strategy<
           const newTokens = await this.refreshAccessToken(context);
           accessToken = newTokens.accessToken;
 
-          this.accessTokenHandler.embed?.(context, accessToken);
+          this.accessTokenConfig.embed?.(context, accessToken);
           if (newTokens.refreshToken) {
             refreshToken = newTokens.refreshToken;
-            this.refreshTokenHandler?.embed?.(context, newTokens.refreshToken);
+            this.refreshTokenConfig?.embed?.(context, newTokens.refreshToken);
           }
         } else {
           this.logger?.info(
@@ -106,27 +99,27 @@ export class OAuth2Strategy<
               );
           }
 
-          this.accessTokenHandler.embed?.(context, accessToken);
+          this.accessTokenConfig.embed?.(context, accessToken);
 
           if (refreshToken) {
-            this.refreshTokenHandler?.embed?.(context, refreshToken);
+            this.refreshTokenConfig?.embed?.(context, refreshToken);
           }
         }
       } else if (accessToken && (await this.isTokenExpired(accessToken))) {
         this.logger?.info("Access token expired, attempting refresh.");
 
-        refreshToken = await this.refreshTokenHandler?.retrieve?.(context);
+        refreshToken = await this.refreshTokenConfig?.retrieve?.(context);
         if (!refreshToken) {
           throw new MissingTokenError("Refresh");
         }
 
         const newTokens = await this.refreshAccessToken(context);
         accessToken = newTokens.accessToken;
-        this.accessTokenHandler.embed?.(context, accessToken);
+        this.accessTokenConfig.embed?.(context, accessToken);
 
         if (newTokens.refreshToken && newTokens.refreshToken !== refreshToken) {
           refreshToken = newTokens.refreshToken;
-          this.refreshTokenHandler?.embed?.(context, newTokens.refreshToken);
+          this.refreshTokenConfig?.embed?.(context, newTokens.refreshToken);
         }
       }
 
@@ -206,7 +199,7 @@ export class OAuth2Strategy<
       this.config.redirectUri
     )}&response_type=code&scope=${this.config.scope ?? ""}`;
 
-    if (this.config.pkce?.enabled) {
+    if (this.config.pkce) {
       const codeVerifier = this.config.pkce.generateCodeVerifier
         ? this.config.pkce.generateCodeVerifier()
         : OAuth2Tools.generateCodeVerifier();
@@ -242,7 +235,7 @@ export class OAuth2Strategy<
       redirect_uri: this.config.redirectUri,
     };
 
-    if (this.config.pkce?.enabled) {
+    if (this.config.pkce) {
       const codeVerifier = this.config.pkce.retrieveCodeVerifier?.(context);
       if (!codeVerifier) {
         throw new Error("Missing PKCE code verifier in context.");
@@ -357,7 +350,7 @@ export class OAuth2Strategy<
     context: TContext
   ): Promise<{ accessToken: string; refreshToken?: string }> {
     try {
-      const refreshToken = await this.refreshTokenHandler?.retrieve?.(context);
+      const refreshToken = await this.refreshTokenConfig?.retrieve?.(context);
       if (!refreshToken) {
         throw new MissingTokenError("Refresh");
       }
@@ -375,12 +368,12 @@ export class OAuth2Strategy<
       };
 
       // Embed new tokens in context
-      await this.accessTokenHandler.embed?.(
+      await this.accessTokenConfig.embed?.(
         context,
         refreshedTokens.accessToken
       );
       if (refreshedTokens.refreshToken) {
-        await this.refreshTokenHandler?.embed?.(
+        await this.refreshTokenConfig?.embed?.(
           context,
           refreshedTokens.refreshToken
         );

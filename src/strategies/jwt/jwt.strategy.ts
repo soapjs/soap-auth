@@ -1,6 +1,5 @@
 import jwt from "jsonwebtoken";
 import * as Soap from "@soapjs/soap";
-import { promisify } from "util";
 import { TokenBasedAuthStrategy } from "../token-based-auth.strategy";
 import {
   InvalidTokenError,
@@ -14,8 +13,6 @@ import {
 } from "./jwt.tools";
 import { SessionHandler } from "../../session/session-handler";
 
-const verifyAsync = promisify(jwt.verify);
-
 export class JwtStrategy<
   TContext = unknown,
   TUser = unknown
@@ -25,10 +22,10 @@ export class JwtStrategy<
     protected session?: SessionHandler,
     protected logger?: Soap.Logger
   ) {
-    if (!config.access.secretKey) {
+    if (!config.accessToken.secretKey) {
       throw new UndefinedTokenSecretError("Access");
     }
-    if (config.refresh && !config.refresh.secretKey) {
+    if (config.refreshToken && !config.refreshToken.secretKey) {
       throw new UndefinedTokenSecretError("Refresh");
     }
     const accessTokenConfig = prepareAccessTokenConfig(config);
@@ -51,11 +48,17 @@ export class JwtStrategy<
             if (!accessTokenConfig.secretKey)
               throw new UndefinedTokenSecretError("Access");
 
-            return verifyAsync(
-              token,
-              accessTokenConfig.secretKey,
-              accessTokenConfig.verifyOptions
-            );
+            return new Promise((resolve, reject) => {
+              jwt.verify(
+                token,
+                accessTokenConfig.secretKey,
+                accessTokenConfig.verifyOptions,
+                (err, payload) => {
+                  if (err) reject(err);
+                  else resolve(payload);
+                }
+              );
+            });
           } catch (error) {
             this.logger?.error("JWT verification failed:", error);
             throw new InvalidTokenError("Access");
@@ -77,11 +80,17 @@ export class JwtStrategy<
             if (!refreshTokenConfig.secretKey)
               throw new UndefinedTokenSecretError("Refresh");
 
-            return verifyAsync(
-              token,
-              refreshTokenConfig.secretKey,
-              refreshTokenConfig.verifyOptions
-            );
+            return new Promise((resolve, reject) => {
+              jwt.verify(
+                token,
+                refreshTokenConfig.secretKey,
+                refreshTokenConfig.verifyOptions,
+                (err, payload) => {
+                  if (err) reject(err);
+                  else resolve(payload);
+                }
+              );
+            });
           } catch (error) {
             this.logger?.error("JWT verification failed:", error);
             throw new InvalidTokenError("Refresh");

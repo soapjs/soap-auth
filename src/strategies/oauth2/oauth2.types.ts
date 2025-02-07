@@ -1,4 +1,4 @@
-import { TokenBasedAuthStrategyConfig } from "../../types";
+import { TokenBasedAuthStrategyConfig, TokenConfig } from "../../types";
 
 export interface OAuth2Endpoints {
   /**
@@ -24,8 +24,7 @@ export interface OAuth2Endpoints {
 }
 
 export interface OAuth2StrategyConfig<TContext = unknown, TUser = unknown>
-  extends TokenBasedAuthStrategyConfig<TContext, TUser>,
-    PKCEConfig<TContext> {
+  extends TokenBasedAuthStrategyConfig<TContext, TUser> {
   clientId: string;
   clientSecret: string;
   redirectUri: string;
@@ -38,13 +37,13 @@ export interface OAuth2StrategyConfig<TContext = unknown, TUser = unknown>
   endpoints: OAuth2Endpoints;
   validateUser?: (tokenPayload: any) => Promise<TUser | null>;
   credentials?: { username: string; password: string };
+  pkce?: PKCEConfig<TContext>;
+  accessToken?: TokenConfig;
+  refreshToken?: TokenConfig;
 }
 
 export interface PKCEConfig<TContext> {
-  pkce?: {
-    enabled?: boolean;
-    generateCodeVerifier?: () => string;
-    storeCodeVerifier?: (context: TContext, codeVerifier: string) => void;
-    retrieveCodeVerifier?: (context: TContext) => string | null;
-  };
+  generateCodeVerifier?: () => string;
+  storeCodeVerifier?: (context: TContext, codeVerifier: string) => void;
+  retrieveCodeVerifier?: (context: TContext) => string | null;
 }

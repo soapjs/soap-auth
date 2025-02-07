@@ -1,33 +1,33 @@
 import * as Soap from "@soapjs/soap";
 import {
-  JwtAccessTokenHandlerConfig,
+  JwtAccessTokenConfig,
   JwtConfig,
-  JwtRefreshTokenHandlerConfig,
+  JwtRefreshTokenConfig,
 } from "./jwt.types";
 
 export const prepareAccessTokenConfig = (
   config: JwtConfig
-): JwtAccessTokenHandlerConfig => {
+): JwtAccessTokenConfig => {
   return Soap.removeUndefinedProperties<any>({
-    ...config.access,
+    ...config.accessToken,
     tokenType: "Access",
-    expiresIn: config.access.expiresIn || "1h",
+    expiresIn: config.accessToken.expiresIn || "1h",
     signOptions: {
-      ...config.access.signOptions,
-      algorithm: config.access.signOptions.algorithm || "HS256",
-      expiresIn: config.access.expiresIn || "1h",
-      audience: config.access.audience,
-      issuer: config.access.issuer,
-      subject: config.access.subject,
+      ...config.accessToken.signOptions,
+      algorithm: config.accessToken.signOptions.algorithm || "HS256",
+      expiresIn: config.accessToken.expiresIn || "1h",
+      audience: config.accessToken.audience,
+      issuer: config.accessToken.issuer,
+      subject: config.accessToken.subject,
     },
-    verifyOptions: config.access.verifyOptions
+    verifyOptions: config.accessToken.verifyOptions
       ? {
-          ...config.access.verifyOptions,
-          algorithms: config.access.verifyOptions.algorithms || ["HS256"],
-          expiresIn: config.access.expiresIn || "1h",
-          audience: config.access.audience,
-          issuer: config.access.issuer,
-          subject: config.access.subject,
+          ...config.accessToken.verifyOptions,
+          algorithms: config.accessToken.verifyOptions.algorithms || ["HS256"],
+          expiresIn: config.accessToken.expiresIn || "1h",
+          audience: config.accessToken.audience,
+          issuer: config.accessToken.issuer,
+          subject: config.accessToken.subject,
         }
       : {},
   });
@@ -35,27 +35,27 @@ export const prepareAccessTokenConfig = (
 
 export const prepareRefreshTokenConfig = (
   config: JwtConfig
-): JwtRefreshTokenHandlerConfig => {
+): JwtRefreshTokenConfig => {
   return Soap.removeUndefinedProperties<any>({
-    ...config.refresh,
-    secretKey: config.refresh.secretKey,
+    ...config.refreshToken,
+    secretKey: config.refreshToken.secretKey,
     tokenType: "Refresh",
     signOptions: {
-      ...config.refresh.signOptions,
-      algorithm: config.refresh.signOptions.algorithm || "HS256",
-      expiresIn: config.refresh.expiresIn || "7d",
-      audience: config.refresh.audience,
-      issuer: config.refresh.issuer,
-      subject: config.refresh.subject,
+      ...config.refreshToken.signOptions,
+      algorithm: config.refreshToken.signOptions.algorithm || "HS256",
+      expiresIn: config.refreshToken.expiresIn || "7d",
+      audience: config.refreshToken.audience,
+      issuer: config.refreshToken.issuer,
+      subject: config.refreshToken.subject,
     },
-    verifyOptions: config.refresh.verifyOptions
+    verifyOptions: config.refreshToken.verifyOptions
       ? {
-          ...config.refresh.verifyOptions,
-          algorithm: config.refresh.verifyOptions.algorithms || ["HS256"],
-          expiresIn: config.refresh.expiresIn || "7d",
-          audience: config.refresh.audience,
-          issuer: config.refresh.issuer,
-          subject: config.refresh.subject,
+          ...config.refreshToken.verifyOptions,
+          algorithm: config.refreshToken.verifyOptions.algorithms || ["HS256"],
+          expiresIn: config.refreshToken.expiresIn || "7d",
+          audience: config.refreshToken.audience,
+          issuer: config.refreshToken.issuer,
+          subject: config.refreshToken.subject,
         }
       : {},
   });
