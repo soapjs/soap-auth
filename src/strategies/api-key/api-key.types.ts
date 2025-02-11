@@ -1,16 +1,16 @@
 import {
   RateLimitConfig,
   RoleAuthorizationConfig,
-  AuthFailureContext,
-  AuthSuccessContext,
   AccountLockConfig,
+  AuthResultConfig,
 } from "../../types";
 
 /**
  * Configuration options for the API key authentication process.
  */
 export interface ApiKeyStrategyConfig<TContext = unknown, TUser = unknown>
-  extends ApiKeyTrackingConfig,
+  extends AuthResultConfig<TContext, TUser>,
+    ApiKeyTrackingConfig,
     RateLimitConfig,
     RoleAuthorizationConfig<TUser>,
     AccountLockConfig<TContext> {
@@ -47,24 +47,6 @@ export interface ApiKeyStrategyConfig<TContext = unknown, TUser = unknown>
    * @returns A promise that resolves when the API key is revoked.
    */
   revokeApiKey?: (apiKey: string) => Promise<void>;
-
-  /**
-   * Callback invoked upon successful authentication.
-   *
-   * @param context - The context of the request, which may include request and response objects or other relevant data.
-   * @returns {Promise<void>|void} Optionally returns a promise that resolves when success handling is complete.
-   */
-  onSuccess?: (
-    context: AuthSuccessContext<TUser, TContext>
-  ) => Promise<void> | void;
-
-  /**
-   * Callback invoked upon failed authentication.
-   *
-   * @param context - The context of the request, which may include request and response objects or other relevant data.
-   * @returns {Promise<void>|void} Optionally returns a promise that resolves when failure handling is complete.
-   */
-  onFailure?: (context: AuthFailureContext<TContext>) => Promise<void> | void;
 }
 
 /**

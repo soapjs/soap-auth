@@ -1,4 +1,12 @@
-import { TokenBasedAuthStrategyConfig, TokenConfig } from "../../types";
+import {
+  BaseAuthStrategyConfig,
+  CredentailsConfig,
+  PKCEConfig,
+  AuthRouteConfig,
+  TokenAuthStrategyConfig,
+  TokenConfig,
+  UserConfig,
+} from "../../types";
 
 export interface OAuth2Endpoints {
   /**
@@ -21,29 +29,28 @@ export interface OAuth2Endpoints {
    * URL to revoke tokens if needed
    */
   revocationUrl?: string;
+
+  /**
+   * Endpoint for user logout
+   */
+  logoutUrl?: string;
 }
 
 export interface OAuth2StrategyConfig<TContext = unknown, TUser = unknown>
-  extends TokenBasedAuthStrategyConfig<TContext, TUser> {
+  extends TokenAuthStrategyConfig<TContext, TUser> {
   clientId: string;
   clientSecret: string;
   redirectUri: string;
-  scope?: string;
+  scope?: string | string[];
+  audience?: string;
+  responseType?: "code" | "token" | "id_token" | string;
   grantType:
     | "authorization_code"
     | "client_credentials"
     | "password"
-    | "refresh_token";
+    | "refresh_token"
+    | string;
   endpoints: OAuth2Endpoints;
-  validateUser?: (tokenPayload: any) => Promise<TUser | null>;
-  credentials?: { username: string; password: string };
+  credentials?: CredentailsConfig<TContext>;
   pkce?: PKCEConfig<TContext>;
-  accessToken?: TokenConfig;
-  refreshToken?: TokenConfig;
-}
-
-export interface PKCEConfig<TContext> {
-  generateCodeVerifier?: () => string;
-  storeCodeVerifier?: (context: TContext, codeVerifier: string) => void;
-  retrieveCodeVerifier?: (context: TContext) => string | null;
 }

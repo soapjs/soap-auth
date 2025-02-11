@@ -1,7 +1,9 @@
 import * as Soap from "@soapjs/soap";
 import {
+  AuthFailureContext,
   AuthResult,
   AuthStrategy,
+  AuthSuccessContext,
   BaseAuthStrategyConfig,
 } from "../types";
 import {
@@ -18,12 +20,7 @@ export abstract class BaseAuthStrategy<TContext = unknown, TUser = unknown>
    * Abstract method to authenticate user, must be implemented by concrete strategies.
    */
   abstract authenticate(context?: TContext): Promise<AuthResult<TUser>>;
-  /**
-   * Abstract method to be implemented by concrete strategies for user retrieval.
-   * This should fetch user data based on provided context.
-   * @param context - The authentication context.
-   */
-  protected abstract retrieveUser(context: TContext): Promise<TUser | null>;
+
   /**
    * Handles the logout process by revoking tokens and clearing sessions.
    * @param context - The request context.
@@ -48,11 +45,8 @@ export abstract class BaseAuthStrategy<TContext = unknown, TUser = unknown>
    * Checks if the user's account is locked.
    * Can be overridden by specific strategies or provided via config.
    */
-  protected async isAccountLocked(
-    account: any,
-    ...args: unknown[]
-  ): Promise<boolean> {
-    if (await this.config.lock.isAccountLocked?.(account, ...args)) {
+  protected async isAccountLocked(account: any): Promise<boolean> {
+    if (await this.config.lock.isAccountLocked?.(account)) {
       throw new AccountLockedError();
     }
 
@@ -125,6 +119,28 @@ export abstract class BaseAuthStrategy<TContext = unknown, TUser = unknown>
     } catch (error) {
       this.logger?.error(`2FA validation error for user: ${user}`, error);
       throw error;
+    }
+  }
+
+  protected async onSuccess(
+    action: string,
+    context: AuthSuccessContext<TUser, TContext>
+  ) {
+    try {
+      await this.config.onSuccess?.(action, context);
+    } catch (error) {
+      this.logger?.error(error);
+    }
+  }
+
+  protected async onFailure(
+    action: string,
+    context: AuthFailureContext<TContext>
+  ) {
+    try {
+      await this.config.onFailure?.(action, context);
+    } catch (error) {
+      this.logger?.error(error);
     }
   }
 }

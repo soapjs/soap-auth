@@ -1,7 +1,4 @@
-import {
-  TokenBasedAuthStrategyConfig,
-  TokenConfig,
-} from "../../types";
+import { TokenAuthStrategyConfig } from "../../types";
 
 /**
  * Options for verifying a token.
@@ -82,9 +79,9 @@ export interface JwtSignOptions {
   notBefore?: string | number;
 
   /**
-   * The JWT ID (`jti`) claim.
+   * The JWT ID claim.
    */
-  jwtid?: string;
+  jti?: string;
 
   /**
    * A timestamp in seconds since epoch that represents the "iat" (issued at) claim.
@@ -116,32 +113,5 @@ export interface JwtSignOptions {
   allowUnsafe?: boolean;
 }
 
-export type JwtAccessTokenConfig = {
-  verifyOptions?: JwtVerifyOptions;
-  signOptions: JwtSignOptions;
-} & TokenConfig;
-
-export type JwtRefreshTokenConfig = {
-  verifyOptions?: JwtVerifyOptions;
-  signOptions: JwtSignOptions;
-} & TokenConfig;
-
 export interface JwtConfig<TContext = unknown, TUser = unknown>
-  extends TokenBasedAuthStrategyConfig<TContext, TUser> {
-  accessToken: JwtAccessTokenConfig;
-  refreshToken?: JwtRefreshTokenConfig;
-  routes?: {
-    login?: {
-      path: string; // Default "/auth/login"
-      method?: "POST" | "GET"; // Default "POST"
-    };
-    logout?: {
-      path: string; // Default "/auth/logout"
-      method?: "POST" | "GET";
-    };
-    refresh?: {
-      path: string; // Default "/auth/refresh"
-      method?: "POST" | "GET";
-    };
-  };
-}
+  extends TokenAuthStrategyConfig<TContext, TUser> {}

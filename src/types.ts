@@ -140,9 +140,13 @@ export type Credentials = {
 
 export interface AuthResultConfig<TContext = unknown, TUser = unknown> {
   onSuccess?: (
+    action: string,
     context: AuthSuccessContext<TUser, TContext>
   ) => Promise<void> | void;
-  onFailure?: (context: AuthFailureContext<TContext>) => Promise<void> | void;
+  onFailure?: (
+    action: string,
+    context: AuthFailureContext<TContext>
+  ) => Promise<void> | void;
 }
 
 export interface SecurityConfig {
@@ -151,13 +155,15 @@ export interface SecurityConfig {
   notifyOnLockout?: (account: any) => Promise<void>;
 }
 
-export interface BaseAuthStrategyConfig<TContext = unknown, TUser = unknown> {
+export interface BaseAuthStrategyConfig<TContext = unknown, TUser = unknown>
+  extends AuthResultConfig<TContext, TUser> {
   mfa?: MfaConfig<TUser, TContext>;
   session?: SessionConfig;
   role?: RoleAuthorizationConfig<TUser>;
   rateLimit?: RateLimitConfig;
   security?: SecurityConfig;
   lock?: AccountLockConfig<TContext>;
+  failedAttempts?: FailedAttemptsConfig;
 }
 
 export interface AuditLoggingConfig<TContext = unknown> {
@@ -248,59 +254,69 @@ export interface PasswordPolicyConfig {
   getLastPasswordChange?: (identifier: string) => Date;
   forcePasswordChangeOnFirstLogin?: boolean;
   passwordExpirationDays?: number;
+  isPasswordChangeRequired?: (identifier: string) => Promise<boolean>;
+  generateResetToken?: (identifier: string) => Promise<string>;
+  sendResetEmail?: (identifier: string, token: string) => Promise<void>;
+  validateResetToken?: (token: string) => Promise<boolean>;
+  updatePassword?: (identifier: string, newPassword: string) => Promise<void>;
 }
 
-export interface CredentialBasedAuthStrategyConfig<
+export interface UserConfig {
+  getUserData: (payload: any) => Promise<any>;
+  validateUser?: (payload: any) => Promise<any>;
+}
+export interface CredentailsConfig<TContext = any> {
+  extractCredentials: <TCredentials = { identifier: string; password: string }>(
+    context: TContext
+  ) => TCredentials;
+  verifyCredentials: (identifier: string, password: string) => Promise<boolean>;
+}
+export interface FailedAttemptsConfig {
+  incrementFailedAttempts?: (
+    identifier: string,
+    ...rest: unknown[]
+  ) => Promise<void>;
+  resetFailedAttempts?: (
+    identifier: string,
+    ...rest: unknown[]
+  ) => Promise<void>;
+  getFailedAttempts?: (
+    identifier: string,
+    ...rest: unknown[]
+  ) => Promise<number>;
+}
+
+export interface CredentialAuthStrategyConfig<
   TContext = unknown,
   TUser = unknown
 > extends BaseAuthStrategyConfig<TContext, TUser> {
   passwordPolicy?: PasswordPolicyConfig;
   audit?: AuditLoggingConfig<TContext>;
-  logout: {} & AuthResultConfig<TContext, TUser>;
-  login: {
-    extractCredentials: (
-      context: TContext
-    ) => Promise<{ identifier: string; password: string }>;
-    retrieveUserData: (identifier: string) => Promise<TUser | null>;
-    verifyUserCredentials: (
-      identifier: string,
-      password: string
-    ) => Promise<boolean>;
-    incrementFailedAttempts?: (identifier: string) => Promise<void>;
-    resetFailedAttempts?: (identifier: string) => Promise<void>;
-    getFailedAttempts?: (identifier: string) => Promise<number>;
-  } & AuthResultConfig<TContext, TUser>;
-  passwordReset?: {
-    generateResetToken?: (identifier: string) => Promise<string>;
-    sendResetEmail?: (identifier: string, token: string) => Promise<void>;
-    validateResetToken?: (token: string) => Promise<boolean>;
-    updatePassword?: (identifier: string, newPassword: string) => Promise<void>;
-  } & AuthResultConfig<TContext, TUser>;
+  credentials?: CredentailsConfig<TContext>;
+  user?: UserConfig;
+  routes?: {
+    login?: AuthRouteConfig;
+    logout?: AuthRouteConfig;
+    resetPassword?: AuthRouteConfig;
+  };
 }
 
-export interface TokenBasedAuthStrategyConfig<
-  TContext = unknown,
-  TUser = unknown
-> extends BaseAuthStrategyConfig<TContext, TUser> {
-  rotation?: TokenRotationConfig<TUser>;
-  login: {
-    retrieveUserData: (identifier: string) => Promise<TUser | null>;
-  } & AuthResultConfig<TContext, TUser>;
-  logout: {} & AuthResultConfig<TContext, TUser>;
-}
+export type AuthRouteConfig = {
+  path?: string;
+  method?: string;
+};
 
-export interface TokenRotationConfig<TUser = unknown> {
-  maxRotations?: number;
-  storeUsedTokens?: boolean;
-  getRefreshToken?: (user: TUser) => Promise<string>;
-  rotateToken?: (
-    refreshToken: string
-  ) => Promise<{ accessToken: string; refreshToken: string }>;
-  onTokenRotated?: (
-    user: TUser,
-    newTokens: { accessToken: string; refreshToken: string }
-  ) => Promise<void>;
-  onTokenRotationFailure?: (user: TUser, error: Error) => Promise<void>;
+export interface TokenAuthStrategyConfig<TContext = unknown, TUser = unknown>
+  extends BaseAuthStrategyConfig<TContext, TUser> {
+  user?: UserConfig;
+  routes: {
+    login?: AuthRouteConfig;
+    logout?: AuthRouteConfig;
+    refresh?: AuthRouteConfig;
+    [key: string]: AuthRouteConfig;
+  };
+  accessToken?: TokenConfig<TContext>;
+  refreshToken?: TokenConfig<TContext>;
 }
 
 /**
@@ -309,8 +325,8 @@ export interface TokenRotationConfig<TUser = unknown> {
  */
 export interface AccountLockConfig<TContext = unknown> {
   logFailedAttempt?: (account: any, context?: TContext) => Promise<void>;
-  lockAccount?: (account: any, ...args: unknown[]) => Promise<void>;
-  isAccountLocked?: (account: any, ...args: unknown[]) => Promise<boolean>;
+  lockAccount?: (account: any) => Promise<void>;
+  isAccountLocked?: (account: any, context?: TContext) => Promise<boolean>;
 }
 
 /**
@@ -381,7 +397,7 @@ export interface AuthStrategy<TContext = unknown, TUser = unknown> {
   authenticate(
     context?: TContext,
     ...args: unknown[]
-  ): Promise<AuthResult<TUser>>;
+  ): Promise<AuthResult<TUser> | null>;
 
   /**
    * (Optional) Authorizes a user for a specific action on a resource.
@@ -674,10 +690,7 @@ export interface StorageContext {
   decrypt?: (data: string) => Promise<string> | string;
 }
 
-/**
- * Interface defining the configuration and operations for managing tokens.
- */
-export interface TokenConfig {
+export interface TokenIssuerConfig {
   /**
    * The secret key used to sign tokens.
    * Can be a string or a Buffer (in case of asymmetric keys).
@@ -685,32 +698,34 @@ export interface TokenConfig {
   secretKey: string;
 
   /**
-   * Specifies the expiration time for the token.
-   * Example formats: "1h", "2d", or number of seconds.
+   * Additional token generation options.
    */
-  expiresIn: string | number;
+  options: {
+    /**
+     * Specifies the expiration time for the token.
+     * Example formats: "1h", "2d", or number of seconds.
+     */
+    expiresIn: string | number;
 
-  /**
-   * Expected audience value (`aud`) in the token.
-   * Can be a string or an array of allowed audiences.
-   */
-  audience?: string | string[];
+    /**
+     * Expected audience value (`aud`) in the token.
+     * Can be a string or an array of allowed audiences.
+     */
+    audience?: string | string[];
 
-  /**
-   * Expected issuer (`iss`) of the token.
-   * Can be a string or an array of allowed issuers.
-   */
-  issuer?: string | string[];
+    /**
+     * Expected issuer (`iss`) of the token.
+     * Can be a string or an array of allowed issuers.
+     */
+    issuer?: string | string[];
 
-  /**
-   * Expected subject (`sub`) of the token.
-   */
-  subject?: string;
+    /**
+     * Expected subject (`sub`) of the token.
+     */
+    subject?: string;
 
-  /**
-   * Specifies the type of token being handled.
-   */
-  tokenType?: string;
+    [option: string]: unknown;
+  };
 
   /**
    * Generates a new token with the provided payload.
@@ -720,6 +735,11 @@ export interface TokenConfig {
    * @throws {Error} If the payload is invalid or token creation fails.
    */
   generate?: (payload: any) => string;
+}
+export interface TokenVerifierConfig {
+  options: {
+    [option: string]: unknown;
+  };
 
   /**
    * Verifies a token and decodes its content.
@@ -729,47 +749,82 @@ export interface TokenConfig {
    * @throws {Error} If token is invalid or expired.
    */
   verify?: (token: string) => Promise<any>;
+}
 
+export interface TokenPersistenceConfig {
   /**
    * Stores the token in a designated storage location (e.g., database, cache, cookies).
    *
    * @param {string} token - The token to be stored.
    * @param {any} data - Additional data to be stored with the token.
-   * @param {number} expiresIn - Expiration time in seconds.
+   * @param {string | number} expiresIn - Expiration time.
    * @returns {Promise<void>} A promise that resolves when the token is successfully stored.
    */
-  store?: (token: string, data: any, expiresIn: number) => Promise<void>;
+  store?: (
+    token: string,
+    data: any,
+    expiresIn: string | number
+  ) => Promise<void>;
 
   /**
-   * Retrieves the token from the specified context (e.g., headers, cookies, local storage).
+   * Reads the token from the specified context (e.g., headers, cookies, local storage).
    *
-   * @param {any} context - The context from which to retrieve the token.
    * @returns {Promise<string | null>} A promise that resolves with the retrieved token, or null if not found.
    */
-  retrieve?: (context: any) => Promise<string | null>;
+  read?: (...args: any[]) => Promise<string | null>;
 
   /**
    * Removes the token from the storage (e.g., during logout or token invalidation).
    *
-   * @param {any} context - The context containing the token to be removed.
    * @returns {Promise<void>} A promise that resolves when the token is successfully removed.
    */
-  remove?: (context: any) => Promise<void>;
+  remove?: (...args: any[]) => Promise<void>;
+}
 
+/**
+ * Interface defining the configuration and operations for managing tokens.
+ */
+export interface TokenConfig<TContext = any> {
   /**
    * Embeds the token in a given context (e.g., HTTP response headers, cookies).
    *
-   * @param {any} context - The context in which to embed the token.
+   * @param {TContext} context - The context in which to embed the token.
    * @param {string} token - The token to be embedded.
    */
-  embed?: (context: any, token: string) => void;
+  embed?: (context: TContext, token: string) => void;
 
   /**
-   * Handles token rotation by generating a new token based on an existing one.
-   * Useful for refreshing tokens without requiring re-authentication.
+   * Retrieves the token from the specified context (e.g., HTTP headers, cookies).
    *
-   * @param {string} oldToken - The existing token that needs to be rotated.
-   * @returns {Promise<string>} A promise that resolves with the new rotated token.
+   * @param {TContext} context - The context from which to retrieve the token.
+   * @returns {Promise<string | null>} A promise that resolves with the retrieved token, or null if not found.
    */
-  rotate?: (oldToken: string) => Promise<string>;
+  retrieve?: (context: TContext) => Promise<string | null>;
+
+  rotation?: TokenRotationConfig;
+  issuer?: TokenIssuerConfig;
+  verifier?: TokenVerifierConfig;
+  persistence?: TokenPersistenceConfig;
+  additional?: Record<string, unknown>;
+}
+
+export interface TokenRotationConfig {
+  /**
+   * Maximum number of times a token can be rotated before requiring re-authentication.
+   */
+  maxRotations?: number;
+
+  /**
+   * Rotates the token, generating a new one and invalidating the old one.
+   *
+   * @param {string} token - The current token.
+   * @returns {Promise<string>} The new token.
+   */
+  rotateToken?: (token: string) => Promise<string>;
+}
+
+export interface PKCEConfig<TContext> {
+  generateCodeVerifier?: () => string;
+  storeCodeVerifier?: (context: TContext, codeVerifier: string) => void;
+  retrieveCodeVerifier?: (context: TContext) => string | null;
 }

@@ -11,6 +11,7 @@ import {
   RateLimitExceededError,
   UnauthorizedRoleError,
 } from "../../errors";
+import { BaseAuthStrategy } from "../base-auth.strategy";
 
 /**
  * Implements an API key authentication strategy.
@@ -19,6 +20,7 @@ import {
  * @template TUser - The type of the authenticated user.
  */
 export class ApiKeyStrategy<TContext = unknown, TUser = unknown>
+  extends BaseAuthStrategy<TContext, TUser>
   implements AuthStrategy<TContext, TUser>
 {
   /**
@@ -27,9 +29,10 @@ export class ApiKeyStrategy<TContext = unknown, TUser = unknown>
    * @param logger - Logger instance for logging purposes.
    */
   constructor(
-    private config: ApiKeyStrategyConfig<TContext, TUser>,
-    private logger: Soap.Logger
+    protected config: ApiKeyStrategyConfig<TContext, TUser>,
+    logger: Soap.Logger
   ) {
+    super(config, null, logger);
     if (!this.config.extractApiKey || !this.config.retrieveUserByApiKey) {
       throw new Error(
         "ApiKeyStrategy requires extractApiKey and retrieveUserByApiKey functions."
@@ -95,13 +98,13 @@ export class ApiKeyStrategy<TContext = unknown, TUser = unknown>
 
       await this.trackApiKeyUsage(apiKey);
       await this.incrementRequestCount(apiKey);
-      await this.config.onSuccess?.({ user, context });
+      await this.onSuccess("authenticate", { user, context });
 
       return { user };
     } catch (error) {
       this.logger.error("API Key authentication error:", error);
       try {
-        await this.config.onFailure?.({ error, context });
+        await this.onFailure("authenticate", { error, context });
       } catch (callbackError) {
         this.logger.error(
           "onFailure callback error during authentication:",
@@ -128,7 +131,7 @@ export class ApiKeyStrategy<TContext = unknown, TUser = unknown>
       return this.config.authorize(user, action, resource);
     }
 
-    throw new Error("Authorization logic is not implemented.");
+    return true;
   }
 
   /**
@@ -169,5 +172,9 @@ export class ApiKeyStrategy<TContext = unknown, TUser = unknown>
     } catch (error) {
       this.logger.warn("Failed to increment request count:", error);
     }
+  }
+
+  logout(context: TContext): Promise<void> {
+    return;
   }
 }

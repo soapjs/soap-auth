@@ -1,3 +1,4 @@
+import * as Soap from "@soapjs/soap";
 import { HttpAuthStrategyFactory } from "./factories/http-auth-strategy.factory";
 import { SocketAuthStrategyFactory } from "./factories/socket-auth-strategy.factory";
 import { AuthResult, AuthStrategy, SoapAuthConfig } from "./types";
@@ -7,19 +8,20 @@ import { AuthResult, AuthStrategy, SoapAuthConfig } from "./types";
  */
 export class SoapAuth {
   private requiredStrategyMethods = ["authenticate", "init"];
-  private httpStrategies = new Map<string, AuthStrategy>();
-  private socketStrategies = new Map<string, AuthStrategy>();
-
+  private strategies = new Map<"http" | "socket", Map<string, AuthStrategy>>();
+  private logger?: Soap.Logger;
   /**
    * Constructs an instance of SoapAuth, setting up strategies based on provided configuration.
    * @param {SoapAuthConfig} config - Configuration object specifying strategies and their options.
    */
   constructor(config: SoapAuthConfig) {
     const httpFactory = new HttpAuthStrategyFactory(config.logger);
-    this.httpStrategies = httpFactory.createStrategies(config);
-
     const socketFactory = new SocketAuthStrategyFactory(config.logger);
-    this.socketStrategies = socketFactory.createStrategies(config);
+    const httpStrategies = httpFactory.createStrategies(config);
+    const socketStrategies = socketFactory.createStrategies(config);
+    this.strategies.set("http", httpStrategies);
+    this.strategies.set("socket", socketStrategies);
+    this.logger = config.logger;
   }
 
   /**
@@ -28,78 +30,105 @@ export class SoapAuth {
    * @returns {boolean} True if the object implements required methods, otherwise false.
    */
   private isAuthStrategy(strategy: unknown) {
-    const isValidStrategy = this.requiredStrategyMethods.every(
-      (method) => typeof strategy[method] === "function"
+    return (
+      typeof strategy === "object" &&
+      strategy !== null &&
+      this.requiredStrategyMethods.every(
+        (method) => typeof strategy[method] === "function"
+      )
     );
-
-    return isValidStrategy;
   }
 
   /**
    * Adds an authentication strategy to the specified strategies map.
-   * @param {Map<string, AuthStrategy>} strategiesMap - The map of authentication strategies.
    * @param {string} type - The identifier for the strategy type.
    * @param {AuthStrategy | undefined} strategyInstance - The strategy instance to add.
    */
   addStrategy(
-    strategiesMap: Map<string, AuthStrategy>,
-    type: string,
-    strategyInstance: AuthStrategy | undefined
+    strategyInstance: AuthStrategy | undefined,
+    name: string,
+    type: "http" | "socket"
   ) {
+    if (!this.strategies.has(type)) {
+      throw new Error(
+        `Invalid strategy type "${type}". Expected "http" or "socket".`
+      );
+    }
     if (this.isAuthStrategy(strategyInstance)) {
-      strategiesMap.set(type, strategyInstance);
+      this.strategies.get(type).set(name, strategyInstance);
+    } else {
+      this.logger?.error("Invalid authentication strategy provided.");
+      throw new Error(
+        "Invalid authentication strategy: does not implement required methods."
+      );
     }
   }
 
   /**
    * Removes an authentication strategy from the registered strategies.
-   * @param {string} type - The identifier for the strategy type.
+   * @param {string} name - The identifier for the strategy type.
    * @returns {boolean} True if the strategy was removed, otherwise false.
    */
-  removeStrategy(type: string): boolean {
-    if (this.httpStrategies.has(type)) {
-      this.httpStrategies.delete(type);
-      return true;
+  removeStrategy(name: string | string[], type: "http" | "socket") {
+    if (!this.strategies.has(type)) {
+      throw new Error(
+        `Invalid strategy type "${type}". Expected "http" or "socket".`
+      );
     }
-
-    if (this.socketStrategies.has(type)) {
-      this.socketStrategies.delete(type);
-      return true;
-    }
-
-    return false;
+    const names = Array.isArray(name) ? name : [name];
+    names.forEach((n) => {
+      this.strategies.get(type).delete(n);
+    });
   }
 
   /**
    * Checks if a specific authentication strategy is registered.
-   * @param {string} type - The identifier for the strategy type.
+   * @param {string} name - The identifier for the strategy type.
    * @returns {boolean} True if the strategy exists, otherwise false.
    */
-  hasStrategy(type: string): boolean {
-    return this.httpStrategies.has(type) || this.socketStrategies.has(type);
+  hasStrategy(name: string, type: "http" | "socket"): boolean {
+    if (!this.strategies.has(type)) {
+      throw new Error(
+        `Invalid strategy type "${type}". Expected "http" or "socket".`
+      );
+    }
+    return this.strategies.get(type).has(name);
   }
 
   /**
    * Retrieves an authentication strategy by name from either HTTP or WebSocket strategies.
    *
-   * @param {string} strategyName - The strategy identifier.
-   * @returns {AuthStrategy | undefined} The authentication strategy or undefined if not found.
+   * @param {string} name - The strategy identifier.
+   * @returns {AuthStrategy} The authentication strategy or throws error if not found.
    */
-  getStrategy(
-    strategyName: string,
-    layer: "http" | "socket" = "http"
-  ): AuthStrategy | undefined {
-    return layer === "http"
-      ? this.httpStrategies.get(strategyName)
-      : this.socketStrategies.get(strategyName);
+  getStrategy(name: string, type: "http" | "socket"): AuthStrategy | undefined {
+    if (!this.strategies.has(type)) {
+      throw new Error(
+        `Invalid strategy type "${type}". Expected "http" or "socket".`
+      );
+    }
+
+    const strategy = this.strategies.get(type).get(name);
+
+    if (!strategy) {
+      throw new Error(`Authentication strategy "${name}" not found.`);
+    }
+
+    return strategy;
   }
 
   /**
    * Lists all registered authentication strategies.
    * @returns {string[]} An array containing the names of registered strategies.
    */
-  listStrategies(): string[] {
-    return [...this.httpStrategies.keys(), ...this.socketStrategies.keys()];
+  listStrategies(type: "http" | "socket"): string[] {
+    if (!this.strategies.has(type)) {
+      throw new Error(
+        `Invalid strategy type "${type}". Expected "http" or "socket".`
+      );
+    }
+
+    return Array.from(this.strategies.get(type).keys());
   }
 
   /**
@@ -110,47 +139,71 @@ export class SoapAuth {
    */
   async init(sequential = false) {
     const strategies = [
-      ...this.httpStrategies.values(),
-      ...this.socketStrategies.values(),
+      ...this.strategies.get("http").values(),
+      ...this.strategies.get("socket").values(),
     ];
 
     if (sequential) {
       for (const strategy of strategies) {
-        await strategy.init();
+        try {
+          await strategy.init();
+        } catch (error) {
+          this.logger?.error(`Failed to initialize strategy: ${error.message}`);
+        }
       }
     } else {
-      await Promise.all(strategies.map((strategy) => strategy.init()));
+      await Promise.all(
+        strategies.map((strategy) =>
+          strategy
+            .init()
+            .catch((error) =>
+              this.logger?.error(
+                `Failed to initialize strategy: ${error.message}`
+              )
+            )
+        )
+      );
     }
   }
 
   /**
    * Authenticates a request based on the given strategy.
    *
-   * @param {string} strategyName - The authentication strategy name.
+   * @param {string} name - The authentication strategy name.
    * @param {any} context - The authentication context.
    * @returns {Promise<AuthResult<any>>} The authentication result.
    */
   async authenticate(
-    strategyName: string,
+    type: "http" | "socket",
+    name: string,
     context: any
   ): Promise<AuthResult<any>> {
-    const strategy = this.getStrategy(strategyName);
+    const strategy = this.getStrategy(name, type);
+
     if (!strategy) {
-      throw new Error(`Authentication strategy "${strategyName}" not found.`);
+      throw new Error(`Authentication strategy "${name}" not found.`);
     }
+
     return strategy.authenticate(context);
   }
 
   /**
    * Logs out a user based on the strategy.
    *
-   * @param {string} strategyName - The authentication strategy name.
+   * @param {string} name - The authentication strategy name.
    * @param {any} context - The authentication context.
    */
-  async logout(strategyName: string, context: any): Promise<void> {
-    const strategy = this.getStrategy(strategyName);
+  async logout(
+    type: "http" | "socket",
+    name: string,
+    context: any
+  ): Promise<void> {
+    const strategy = this.getStrategy(name, type);
+
     if (strategy?.logout) {
       await strategy.logout(context);
+    } else {
+      this.logger?.error(`No "logout" implementation in strategy "${name}".`);
     }
   }
 }

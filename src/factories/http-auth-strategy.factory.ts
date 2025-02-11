@@ -30,8 +30,6 @@ export class HttpAuthStrategyFactory extends AuthStrategyFactory {
           provider,
           new OAuth2Strategy(
             config.http.oauth2[provider],
-            config.http.oauth2[provider].accessToken,
-            config.http.oauth2[provider].refreshToken,
             this.getSessionHandler(
               config.http.oauth2[provider].session,
               config.session

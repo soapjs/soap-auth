@@ -1,62 +1,91 @@
 import * as Soap from "@soapjs/soap";
-import {
-  JwtAccessTokenConfig,
-  JwtConfig,
-  JwtRefreshTokenConfig,
-} from "./jwt.types";
+import { TokenConfig } from "../../types";
 
-export const prepareAccessTokenConfig = (
-  config: JwtConfig
-): JwtAccessTokenConfig => {
-  return Soap.removeUndefinedProperties<any>({
-    ...config.accessToken,
-    tokenType: "Access",
-    expiresIn: config.accessToken.expiresIn || "1h",
-    signOptions: {
-      ...config.accessToken.signOptions,
-      algorithm: config.accessToken.signOptions.algorithm || "HS256",
-      expiresIn: config.accessToken.expiresIn || "1h",
-      audience: config.accessToken.audience,
-      issuer: config.accessToken.issuer,
-      subject: config.accessToken.subject,
+export const prepareAccessTokenConfig = <TContext = any>(
+  config: TokenConfig<TContext>
+): TokenConfig<TContext> => {
+  return Soap.removeUndefinedProperties<TokenConfig<TContext>>({
+    ...config,
+    generation: {
+      ...config.issuer.options,
+      expiresIn: config.issuer.options.expiresIn || "1h",
+      algorithm: config.issuer.options.algorithm || "HS256",
     },
-    verifyOptions: config.accessToken.verifyOptions
-      ? {
-          ...config.accessToken.verifyOptions,
-          algorithms: config.accessToken.verifyOptions.algorithms || ["HS256"],
-          expiresIn: config.accessToken.expiresIn || "1h",
-          audience: config.accessToken.audience,
-          issuer: config.accessToken.issuer,
-          subject: config.accessToken.subject,
-        }
-      : {},
+    verification: {
+      ...config.verifier.options,
+      algorithms: config.verifier.options.algorithms || ["HS256"],
+      expiresIn: config.verifier.options.expiresIn || "1h",
+    },
   });
 };
 
-export const prepareRefreshTokenConfig = (
-  config: JwtConfig
-): JwtRefreshTokenConfig => {
-  return Soap.removeUndefinedProperties<any>({
-    ...config.refreshToken,
-    secretKey: config.refreshToken.secretKey,
-    tokenType: "Refresh",
-    signOptions: {
-      ...config.refreshToken.signOptions,
-      algorithm: config.refreshToken.signOptions.algorithm || "HS256",
-      expiresIn: config.refreshToken.expiresIn || "7d",
-      audience: config.refreshToken.audience,
-      issuer: config.refreshToken.issuer,
-      subject: config.refreshToken.subject,
+export const prepareRefreshTokenConfig = <TContext = any>(
+  config: TokenConfig<TContext>
+): TokenConfig<TContext> => {
+  return Soap.removeUndefinedProperties<TokenConfig<TContext>>({
+    ...config,
+    generation: {
+      ...config.issuer,
+      expiresIn: config.issuer.options.expiresIn || "7d",
+      algorithm: config.issuer.options.algorithm || "HS256",
     },
-    verifyOptions: config.refreshToken.verifyOptions
-      ? {
-          ...config.refreshToken.verifyOptions,
-          algorithm: config.refreshToken.verifyOptions.algorithms || ["HS256"],
-          expiresIn: config.refreshToken.expiresIn || "7d",
-          audience: config.refreshToken.audience,
-          issuer: config.refreshToken.issuer,
-          subject: config.refreshToken.subject,
-        }
-      : {},
+    verification: {
+      ...config.verifier.options,
+      algorithms: config.verifier.options.algorithms || ["HS256"],
+      expiresIn: config.verifier.options.expiresIn || "7d",
+    },
   });
+};
+
+export const setDefaultJwtCookie = (token: string, context: any) => {
+  const options = {
+    httpOnly: true,
+    secure: true,
+    sameSite: "Strict",
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7d
+  };
+
+  if (context?.res) {
+    context.res.cookie("refreshToken", token, options);
+  } else if (context?.response) {
+    context.response.cookie("refreshToken", token, options);
+  } else if (context?.cookie) {
+    context.cookie("refreshToken", token, options);
+  }
+};
+
+export const setDefaultJwtHeader = (token: string, context: any) => {
+  if (typeof (context as any)?.res?.setHeader === "function") {
+    (context as any).res.setHeader("Authorization", `Bearer ${token}`);
+  } else if (typeof (context as any)?.response?.setHeader === "function") {
+    (context as any).response.setHeader("Authorization", `Bearer ${token}`);
+  } else if (typeof (context as any)?.setHeader === "function") {
+    (context as any).setHeader("Authorization", `Bearer ${token}`);
+  }
+};
+
+export const clearDefaultJwtHeader = (context: any) => {
+  if (typeof (context as any)?.res?.setHeader === "function") {
+    (context as any).res.setHeader("Authorization", ``);
+  } else if (typeof (context as any)?.response?.setHeader === "function") {
+    (context as any).response.setHeader("Authorization", ``);
+  } else if (typeof (context as any)?.setHeader === "function") {
+    (context as any).setHeader("Authorization", ``);
+  }
+};
+
+export const clearDefaultJwtCookie = (context: any) => {
+  const options = {
+    httpOnly: true,
+    secure: true,
+    sameSite: "Strict",
+  };
+
+  if (typeof context?.res?.clearCookie === "function") {
+    context.res.clearCookie("refreshToken", options);
+  } else if (typeof context?.response?.clearCookie === "function") {
+    context.response.clearCookie("refreshToken", options);
+  } else if (typeof context?.clearCookie === "function") {
+    context.clearCookie("refreshToken", options);
+  }
 };
