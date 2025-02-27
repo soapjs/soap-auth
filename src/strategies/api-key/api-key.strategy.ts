@@ -6,11 +6,7 @@ import {
   ExpiredApiKeyError,
 } from "./api-key.errors";
 import { ApiKeyStrategyConfig } from "./api-key.types";
-import {
-  AccountLockedError,
-  RateLimitExceededError,
-  UnauthorizedRoleError,
-} from "../../errors";
+import { AccountLockedError } from "../../errors";
 import { BaseAuthStrategy } from "../base-auth.strategy";
 
 /**
@@ -23,6 +19,11 @@ export class ApiKeyStrategy<TContext = unknown, TUser = unknown>
   extends BaseAuthStrategy<TContext, TUser>
   implements AuthStrategy<TContext, TUser>
 {
+  protected apiKeyValidity: {
+    sessionDuration: number;
+    longTermDuration: number;
+  };
+
   /**
    * Creates an instance of ApiKeyStrategy with the provided configuration.
    * @param config - Configuration options for API key authentication.
@@ -38,6 +39,35 @@ export class ApiKeyStrategy<TContext = unknown, TUser = unknown>
         "ApiKeyStrategy requires extractApiKey and retrieveUserByApiKey functions."
       );
     }
+
+    this.apiKeyValidity = {
+      sessionDuration: config.sessionDuration || 15 * 60 * 1000, // 15 min
+      longTermDuration: config.longTermDuration || 90 * 24 * 60 * 60 * 1000, // 90 days
+    };
+  }
+
+  protected async fetchUser(
+    apiKey: string,
+    context: TContext
+  ): Promise<TUser | null> {
+    const maxRetries = this.config.retrieveUserMaxRetries ?? 0;
+    const retryDelay = this.config.retrieveUserRetryDelay ?? 100;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const user = await this.config.retrieveUserByApiKey(apiKey, context);
+        return user;
+      } catch (error) {
+        this.logger.warn(`Attempt ${attempt + 1} failed: ${error}`);
+        if (attempt < maxRetries) {
+          await new Promise((resolve) => setTimeout(resolve, retryDelay));
+        } else {
+          throw error;
+        }
+      }
+    }
+
+    return null;
   }
 
   /**
@@ -57,60 +87,51 @@ export class ApiKeyStrategy<TContext = unknown, TUser = unknown>
    * @throws {InvalidApiKeyError} If authentication fails due to invalid API key.
    */
   async authenticate(context?: TContext): Promise<AuthResult<TUser>> {
+    let apiKey: string;
+    const apiKeyType = this.config.keyType ?? "long-term";
+
     try {
-      const apiKey = this.config.extractApiKey(context);
+      apiKey = this.config.extractApiKey(context);
 
       if (!apiKey) {
         throw new MissingApiKeyError();
       }
 
-      if (await this.config.isAccountLocked?.(apiKey, context)) {
+      if (await this.accountLock?.isAccountLocked(apiKey)) {
         throw new AccountLockedError();
       }
+
+      await this.rateLimit?.checkRateLimit(apiKey);
 
       if (await this.config.isApiKeyExpired?.(apiKey)) {
         throw new ExpiredApiKeyError();
       }
 
-      if (
-        this.config.checkRateLimit &&
-        (await this.config.checkRateLimit(apiKey))
-      ) {
-        throw new RateLimitExceededError();
-      }
-
-      const user = await this.config.retrieveUserByApiKey(apiKey);
+      const user = await this.fetchUser(apiKey, context);
 
       if (!user) {
-        await this.config.logFailedAttempt?.(apiKey, context);
         throw new InvalidApiKeyError();
       }
 
-      if (this.config.authorizeByRoles) {
-        const hasAccess = await this.config.authorizeByRoles(
-          user,
-          this.config.roles || []
-        );
-        if (!hasAccess) {
-          throw new UnauthorizedRoleError();
-        }
+      await this.role?.isAuthorized(user);
+
+      if (apiKeyType === "one-time") {
+        await this.config.revokeApiKey?.(apiKey);
       }
 
+      await this.rateLimit?.incrementRequestCount(apiKey);
       await this.trackApiKeyUsage(apiKey);
-      await this.incrementRequestCount(apiKey);
       await this.onSuccess("authenticate", { user, context });
 
       return { user };
     } catch (error) {
-      this.logger.error("API Key authentication error:", error);
-      try {
-        await this.onFailure("authenticate", { error, context });
-      } catch (callbackError) {
-        this.logger.error(
-          "onFailure callback error during authentication:",
-          callbackError
-        );
+      if (this.accountLock) {
+        this.accountLock.logFailedAttempt(apiKey, context);
       }
+      await this.onFailure("authenticate", {
+        context,
+        error,
+      });
       throw error;
     }
   }
@@ -153,28 +174,9 @@ export class ApiKeyStrategy<TContext = unknown, TUser = unknown>
    */
   private async trackApiKeyUsage(apiKey: string): Promise<void> {
     try {
-      if (this.config.trackApiKeyUsage) {
-        await this.config.trackApiKeyUsage(apiKey);
-      }
+      await this.config.trackApiKeyUsage?.(apiKey);
     } catch (error) {
       this.logger.warn("Failed to track API key usage:", error);
     }
-  }
-
-  /**
-   * Increments request count for the provided API key.
-   * Useful for tracking usage limits.
-   * @param apiKey - The API key for which to increment the request count.
-   */
-  private async incrementRequestCount(apiKey: string): Promise<void> {
-    try {
-      await this.config.incrementRequestCount?.(apiKey);
-    } catch (error) {
-      this.logger.warn("Failed to increment request count:", error);
-    }
-  }
-
-  logout(context: TContext): Promise<void> {
-    return;
   }
 }

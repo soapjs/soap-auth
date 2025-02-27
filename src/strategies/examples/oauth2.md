@@ -29,7 +29,7 @@ const googleAuthConfig: OAuth2AuthStrategyConfig = {
 
 ```typescript
 class GoogleAuthStrategy extends OAuth2AuthStrategy<Express.Request, any> {
-  protected async retrieveUser(decodedToken: any): Promise<any | null> {
+  protected async fetchUser(decodedToken: any): Promise<any | null> {
     return decodedToken ? { id: decodedToken.sub, email: decodedToken.email } : null;
   }
 }
@@ -68,7 +68,7 @@ const facebookAuthConfig: OAuth2AuthStrategyConfig = {
 
 ```typescript
 class FacebookAuthStrategy extends OAuth2AuthStrategy<Express.Request, any> {
-  protected async retrieveUser(decodedToken: any): Promise<any | null> {
+  protected async fetchUser(decodedToken: any): Promise<any | null> {
     return decodedToken ? { id: decodedToken.id, email: decodedToken.email } : null;
   }
 }
@@ -107,7 +107,7 @@ const twitterAuthConfig: OAuth2AuthStrategyConfig = {
 
 ```typescript
 class TwitterAuthStrategy extends OAuth2AuthStrategy<Express.Request, any> {
-  protected async retrieveUser(decodedToken: any): Promise<any | null> {
+  protected async fetchUser(decodedToken: any): Promise<any | null> {
     return decodedToken ? { id: decodedToken.id, username: decodedToken.username } : null;
   }
 }
@@ -146,7 +146,7 @@ const githubAuthConfig: OAuth2AuthStrategyConfig = {
 
 ```typescript
 class GitHubAuthStrategy extends OAuth2AuthStrategy<Express.Request, any> {
-  protected async retrieveUser(decodedToken: any): Promise<any | null> {
+  protected async fetchUser(decodedToken: any): Promise<any | null> {
     return decodedToken ? { id: decodedToken.id, email: decodedToken.email } : null;
   }
 }
@@ -184,7 +184,7 @@ const microsoftAuthConfig: OAuth2AuthStrategyConfig = {
 
 ```typescript
 class MicrosoftAuthStrategy extends OAuth2AuthStrategy<Express.Request, any> {
-  protected async retrieveUser(decodedToken: any): Promise<any | null> {
+  protected async fetchUser(decodedToken: any): Promise<any | null> {
     return decodedToken ? { id: decodedToken.id, email: decodedToken.email } : null;
   }
 }
@@ -223,7 +223,7 @@ const linkedinAuthConfig: OAuth2AuthStrategyConfig = {
 
 ```typescript
 class LinkedInAuthStrategy extends OAuth2AuthStrategy<Express.Request, any> {
-  protected async retrieveUser(decodedToken: any): Promise<any | null> {
+  protected async fetchUser(decodedToken: any): Promise<any | null> {
     return decodedToken ? { id: decodedToken.id, email: tokenPayload.email } : null;
   }
 }

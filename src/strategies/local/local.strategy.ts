@@ -2,6 +2,8 @@ import * as Soap from "@soapjs/soap";
 import { CredentialAuthStrategy } from "../credential-auth.strategy";
 import { LocalStrategyConfig } from "./local.types";
 import { SessionHandler } from "../../session/session-handler";
+import { prepareLocalConfig } from "./local.tools";
+import { JwtStrategy } from "../jwt/jwt.strategy";
 
 /**
  * A strategy for authenticating users via local username and password credentials.
@@ -19,14 +21,16 @@ export class LocalStrategy<
    *
    * @param {LocalStrategyConfig<TContext, TUser>} config - Configuration options for the strategy.
    * @param {SessionHandler} [session] - Session configuration.
+   * @param {JwtStrategy<TContext, TUser>} [jwt] - JWT configuration.
    * @param {Soap.Logger} [logger] - Logger instance.
    */
   constructor(
-    protected config: LocalStrategyConfig<TContext, TUser>,
+    config: LocalStrategyConfig<TContext, TUser>,
     protected session?: SessionHandler,
+    protected jwt?: JwtStrategy<TContext, TUser>,
     protected logger?: Soap.Logger
   ) {
-    super(config, session, logger);
+    super(prepareLocalConfig(config), session, jwt, logger);
   }
 
   /**
@@ -61,10 +65,10 @@ export class LocalStrategy<
    * @param {object} credentials - The user's identifier and password.
    * @returns {Promise<TUser | null>} The user object if found, otherwise null.
    */
-  protected async retrieveUser(credentials: {
+  protected async fetchUser(credentials: {
     identifier: string;
     password: string;
   }): Promise<TUser | null> {
-    return this.config.user.getUserData(credentials.identifier);
+    return this.config.user.fetchUser(credentials.identifier);
   }
 }

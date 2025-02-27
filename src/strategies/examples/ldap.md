@@ -99,7 +99,7 @@ export class LdapStrategy<
    * @param credentials - The extracted credentials.
    * @returns {Promise<TUser | null>} Retrieved user data.
    */
-  protected async retrieveUser(credentials: {
+  protected async fetchUser(credentials: {
     identifier: string;
     password: string;
   }): Promise<TUser | null> {

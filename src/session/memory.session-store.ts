@@ -1,12 +1,14 @@
 import { SessionData, SessionStore } from "../types";
 
-const sessions: { [key: string]: SessionData } = {};
-
 /**
  * In-memory implementation of SessionStore.
  * Stores session data in a local JavaScript object.
  */
 export class MemorySessionStore implements SessionStore {
+  private sessions: Record<string, SessionData>;
+  constructor(sessions?: Record<string, SessionData>) {
+    this.sessions = sessions || {};
+  }
   /**
    * Retrieves session data from memory.
    * @param sessionId - The session ID.
@@ -15,7 +17,7 @@ export class MemorySessionStore implements SessionStore {
   async getSession<SessionData>(
     sessionId: string
   ): Promise<SessionData | null> {
-    return (sessions[sessionId] as SessionData) || null;
+    return (this.sessions[sessionId] as SessionData) || null;
   }
 
   /**
@@ -28,7 +30,7 @@ export class MemorySessionStore implements SessionStore {
     sessionId: string,
     sessionData: SessionData
   ): Promise<void> {
-    sessions[sessionId] = sessionData;
+    this.sessions[sessionId] = sessionData;
   }
 
   /**
@@ -37,7 +39,7 @@ export class MemorySessionStore implements SessionStore {
    * @returns A promise that resolves when the session is removed.
    */
   async destroySession(sessionId: string): Promise<void> {
-    delete sessions[sessionId];
+    delete this.sessions[sessionId];
   }
 
   /**
@@ -50,6 +52,10 @@ export class MemorySessionStore implements SessionStore {
     sessionId: string,
     session: SessionData
   ): Promise<void> {
-    sessions[sessionId] = session;
+    this.sessions[sessionId] = session;
+  }
+
+  async getSessionIds(): Promise<string[]> {
+    return Object.keys(this.sessions);
   }
 }

@@ -1,26 +1,35 @@
-import crypto from "crypto";
+import { OAuth2NonceConfig, OAuth2StrategyConfig } from "./oauth2.types";
+import { generateRandomString } from "../../tools";
 
 export class OAuth2Tools {
-  /**
-   * Generates a secure random string for PKCE.
-   */
-  static generateCodeVerifier(): string {
-    return crypto.randomBytes(32).toString("hex");
+  static async generateState(config: OAuth2StrategyConfig): Promise<string> {
+    return (await config.state?.generateState?.()) || generateRandomString();
   }
 
-  /**
-   * Generates a code challenge based on the code verifier using SHA256.
-   *
-   * @param {string} codeVerifier - The original code verifier.
-   * @returns {string} The base64url-encoded SHA256 hash.
-   */
-  static generateCodeChallenge(codeVerifier: string): string {
-    return crypto
-      .createHash("sha256")
-      .update(codeVerifier)
-      .digest("base64")
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=+$/, "");
+  static async generateNonce(config: OAuth2StrategyConfig): Promise<string> {
+    return (await config.nonce?.generateNonce?.()) || generateRandomString();
+  }
+
+  static async validateNonce(
+    expectedNonce: string,
+    nonce: string,
+    config: OAuth2NonceConfig
+  ): Promise<boolean> {
+    if (config.validateNonce) {
+      return config.validateNonce(expectedNonce, nonce);
+    }
+
+    return expectedNonce === nonce;
+  }
+
+  static extractState<TContext>(context: TContext): string | null {
+    return (context as any).query?.state || null;
+  }
+
+  static extractNonce(idToken: string): string | null {
+    const decoded = JSON.parse(
+      Buffer.from(idToken.split(".")[1], "base64").toString()
+    );
+    return decoded.nonce || null;
   }
 }

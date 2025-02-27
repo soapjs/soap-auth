@@ -99,7 +99,7 @@ export class SAMLStrategy<
    * @param credentials - The SAML response.
    * @returns {Promise<TUser | null>} The user object.
    */
-  protected async retrieveUser(credentials: any): Promise<TUser | null> {
+  protected async fetchUser(credentials: any): Promise<TUser | null> {
     return this.config.mapUserAttributes(credentials.extract.attributes);
   }
 }

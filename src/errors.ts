@@ -1,3 +1,9 @@
+export class MissingConfigError extends Error {
+  constructor(config: string) {
+    super(`"${config}" not configured.`);
+  }
+}
+
 /**
  * Error thrown when the user does not have the required role.
  */
@@ -80,6 +86,12 @@ export class InvalidTokenError extends Error {
   }
 }
 
+export class TokenRotationLimitReachedError extends Error {
+  constructor() {
+    super(`Token rotation limit reached. Please re-authenticate.`);
+  }
+}
+
 export class UndefinedTokenSecretError extends Error {
   constructor(public readonly tokenType: "Access" | "Refresh" = "Access") {
     super(`${tokenType} token secret not defined`);
@@ -101,9 +113,20 @@ export class ExpiredTokenError extends Error {
   }
 }
 
-export class AuthError extends Error {
-  constructor(public readonly error: Error, message: string) {
-    super(message || error.message);
-    this.name = "AuthError";
+export class ExpiredResetTokenError extends Error {
+  constructor() {
+    super("Invalid or expired reset token.");
+  }
+}
+
+export class SessionIdNotFoundInContextError extends Error {
+  constructor() {
+    super("Session ID is missing in the context.");
+  }
+}
+
+export class ExpiredPasswordError extends Error {
+  constructor() {
+    super("Password expired, please reset your password.");
   }
 }

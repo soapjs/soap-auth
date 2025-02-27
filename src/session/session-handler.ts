@@ -1,15 +1,26 @@
+import * as Soap from "@soapjs/soap";
 import { v4 as uuidv4 } from "uuid";
-import { SessionConfig, SessionData, SessionStore } from "../types";
+import {
+  SessionConfig,
+  SessionData,
+  SessionInfo,
+  SessionStore,
+} from "../types";
+import { MissingSessionIdError } from "./session.errors";
 
 /**
  * Handles session operations such as retrieving, storing, and generating session IDs.
  */
-export class SessionHandler<TContext = unknown, TData = SessionData> {
+export class SessionHandler<
+  TContext = unknown,
+  TUser = unknown,
+  TData = SessionData
+> {
   private store: SessionStore;
   private sessionKey: string;
   private headerKey: string;
 
-  constructor(private config: SessionConfig) {
+  constructor(private config: SessionConfig, private logger?: Soap.Logger) {
     if (!config.store) {
       throw new Error("Session store is required.");
     }
@@ -113,15 +124,13 @@ export class SessionHandler<TContext = unknown, TData = SessionData> {
   /**
    * Retrieves session data using the session ID from the context.
    *
-   * @param context - The authentication context.
+   * @param sessionId
    * @returns {Promise<TData | null>} The session data or null if not found.
    */
-  async get(context: TContext): Promise<TData | null> {
+  async getSessionData(sessionId: string): Promise<TData | null> {
     try {
-      const sessionId = this.getSessionId(context);
-      if (!sessionId) return null;
-
-      return await this.store.getSession<TData>(sessionId);
+      const data = await this.store.getSession<TData>(sessionId);
+      return data;
     } catch (error) {
       this.config.logger?.error("Error retrieving session data:", error);
       return null;
@@ -131,13 +140,15 @@ export class SessionHandler<TContext = unknown, TData = SessionData> {
   /**
    * Stores session data in the session store.
    *
-   * @param context - The authentication context.
+   * @param sessionId
    * @param data - The session data to store.
    */
-  async set(context: TContext, data: TData): Promise<void> {
+  async setSessionData(sessionId: string, data: TData): Promise<void> {
     try {
-      const sessionId = this.getSessionId(context) || this.generateSessionId();
-      this.config.embedSessionId?.(context, sessionId);
+      if (!sessionId) {
+        this.config.logger?.warn("No session ID found, unable to set session.");
+        return;
+      }
       await this.store.setSession(sessionId, data);
       this.config.logger?.info(`Session set for ID: ${sessionId}`);
     } catch (error) {
@@ -148,12 +159,11 @@ export class SessionHandler<TContext = unknown, TData = SessionData> {
   /**
    * Updates the session's last modified time or refreshes the session data.
    *
-   * @param context - The authentication context.
+   * @param sessionId
    * @param data - The updated session data.
    */
-  async touch(context: TContext, data?: Partial<TData>): Promise<void> {
+  async touch(sessionId: string, data?: Partial<TData>): Promise<void> {
     try {
-      const sessionId = this.getSessionId(context);
       if (!sessionId) {
         this.config.logger?.warn(
           "No session ID found, unable to touch session."
@@ -178,11 +188,10 @@ export class SessionHandler<TContext = unknown, TData = SessionData> {
   /**
    * Destroys the session data from the store.
    *
-   * @param context - The authentication context.
+   * @param sessionId
    */
-  async destroy(context: TContext): Promise<void> {
+  async destroy(sessionId: string): Promise<void> {
     try {
-      const sessionId = this.getSessionId(context);
       if (sessionId) {
         await this.store.destroySession(sessionId);
         this.config.logger?.info(`Session destroyed for ID: ${sessionId}`);
@@ -208,21 +217,48 @@ export class SessionHandler<TContext = unknown, TData = SessionData> {
     return now - (sessionData as any).createdAt > sessionExpiryMs;
   }
 
+  async issueSession(
+    user: TUser,
+    context: TContext
+  ): Promise<SessionInfo<TData>> {
+    const sessionId = this.getSessionId(context) || this.generateSessionId();
+
+    const data: any = this.config.createSessionData
+      ? this.config.createSessionData(user, context)
+      : { user };
+
+    await this.store.setSession(sessionId, data);
+
+    this.config.embedSessionId?.(context, sessionId);
+
+    this.logger?.info(`Stored user session with ID: ${sessionId}`);
+
+    return { sessionId, data };
+  }
+
+  async logoutSession(context: TContext): Promise<void> {
+    const sessionId = this.getSessionId?.(context);
+    if (!sessionId) {
+      throw new MissingSessionIdError();
+    }
+    await this.destroy(sessionId);
+    this.logger?.info(`Session destroyed: ${sessionId}`);
+  }
+
   /**
    * Clears all sessions from the session store.
    */
-  // async clearAllSessions(): Promise<void> {
-  //   try {
-  //     if (this.store && typeof this.store.destroySession === "function") {
-  //       for (const sessionId of Object.keys(
-  //         (await this.store.getAllSessions?.()) || {}
-  //       )) {
-  //         await this.store.destroySession(sessionId);
-  //       }
-  //       this.config.logger?.info("All sessions have been cleared.");
-  //     }
-  //   } catch (error) {
-  //     this.config.logger?.error("Error clearing all sessions:", error);
-  //   }
-  // }
+  async clearAllSessions(): Promise<void> {
+    try {
+      if (typeof this.store.destroySession === "function") {
+        const sessionIds = await this.store.getSessionIds();
+        for (const sessionId of sessionIds) {
+          await this.store.destroySession(sessionId);
+        }
+        this.config.logger?.info("All sessions have been cleared.");
+      }
+    } catch (error) {
+      this.config.logger?.error("Error clearing all sessions:", error);
+    }
+  }
 }

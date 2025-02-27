@@ -43,7 +43,10 @@ export class FileSessionStore implements SessionStore {
    * @param sessionData - The session data to store.
    * @returns A promise that resolves when the data is written.
    */
-  async setSession<SessionData>(sessionId: string, sessionData: SessionData): Promise<void> {
+  async setSession<SessionData>(
+    sessionId: string,
+    sessionData: SessionData
+  ): Promise<void> {
     const sessionPath = path.join(this.sessionsDir, sessionId);
     try {
       await fs.writeFile(sessionPath, JSON.stringify(sessionData), "utf8");
@@ -78,5 +81,14 @@ export class FileSessionStore implements SessionStore {
    */
   async touchSession(sessionId: string, session: SessionData): Promise<void> {
     await this.setSession(sessionId, session);
+  }
+
+  async getSessionIds(): Promise<string[]> {
+    const entries = await fs.readdir(this.sessionsDir, { withFileTypes: true });
+    const ids = entries
+      .filter((entry) => entry.isFile())
+      .map((file) => path.parse(file.name).name);
+
+    return ids;
   }
 }

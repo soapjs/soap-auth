@@ -1,16 +1,25 @@
 import * as Soap from "@soapjs/soap";
 import axios from "axios";
 import {
-  AuthError,
   MissingTokenError,
   MissingAuthorizationCodeError,
   UserNotFoundError,
+  MissingConfigError,
+  MissingCredentialsError,
 } from "../../errors";
 import { AuthResult } from "../../types";
 import { OAuth2StrategyConfig } from "./oauth2.types";
 import { OAuth2Tools } from "./oauth2.tools";
 import { SessionHandler } from "../../session/session-handler";
 import { BaseAuthStrategy } from "../base-auth.strategy";
+import { JwtStrategy } from "../jwt/jwt.strategy";
+import { JwtService } from "../../services/jwks.service";
+import { PKCEService } from "../../services/pkce.service";
+import {
+  InvalidNonceError,
+  MissingCodeVerifierError,
+  UnsupportedGrantTypeError,
+} from "./oauth2.errors";
 
 /**
  * Generic OAuth 2.0 authentication strategy.
@@ -18,17 +27,102 @@ import { BaseAuthStrategy } from "../base-auth.strategy";
  * @template TContext - The type of the authentication context.
  * @template TUser - The type of the authenticated user.
  */
-export class OAuth2Strategy<
+export abstract class OAuth2Strategy<
   TContext = unknown,
   TUser = unknown
 > extends BaseAuthStrategy<TContext, TUser> {
+  protected jwks: JwtService;
+  protected pkce: PKCEService<TContext>;
+
+  /**
+   * Retrieves an access token from the context.
+   *
+   * @param {TContext} context - The authentication context.
+   * @returns {Promise<string | undefined>} The retrieved access token or undefined if not found.
+   */
+  protected abstract extractAccessToken(
+    context: TContext
+  ): Promise<string | undefined>;
+
+  /**
+   * Retrieves a refresh token from the context.
+   *
+   * @param {TContext} context - The authentication context.
+   * @returns {Promise<string | undefined>} The retrieved refresh token or undefined if not found.
+   */
+  protected abstract extractRefreshToken(
+    context: TContext
+  ): Promise<string | undefined>;
+
+  /**
+   * Stores an access token in the designated storage (e.g., database, session, cookies).
+   *
+   * @param {string} token - The access token to store.
+   * @param {TContext} context - The authentication context.
+   */
+  protected abstract storeAccessToken(
+    token: string,
+    context: TContext
+  ): Promise<void>;
+
+  /**
+   * Stores a refresh token in the designated storage.
+   *
+   * @param {string} token - The refresh token to store.
+   * @param {TContext} context - The authentication context.
+   */
+  protected abstract storeRefreshToken(
+    token: string,
+    context: TContext
+  ): Promise<void>;
+
+  /**
+   * Embeds an access token into the response context.
+   *
+   * @param {string} token - The access token.
+   * @param {TContext} context - The authentication context.
+   */
+  protected abstract embedAccessToken(token: string, context: TContext);
+
+  /**
+   * Embeds a refresh token into the response context.
+   *
+   * @param {string} token - The refresh token.
+   * @param {TContext} context - The authentication context.
+   */
+  protected abstract embedRefreshToken(token: string, context: TContext);
+
+  /**
+   * Extracts the authorization code from the request context.
+   *
+   * @param {TContext} context - The authentication context.
+   * @returns {string | null} The extracted authorization code or null if not found.
+   */
+  protected abstract extractAuthorizationCode(context: TContext): string | null;
+
+  /**
+   * Redirects the user to the specified authorization URL.
+   *
+   * @param {TContext} context - The authentication context.
+   * @param {string} authUrl - The URL to redirect the user to.
+   */
+  protected abstract redirectUser(context: TContext, authUrl: string): void;
+
   constructor(
     protected config: OAuth2StrategyConfig<TContext, TUser>,
     protected session?: SessionHandler,
+    protected jwt?: JwtStrategy<TContext, TUser>,
     protected logger?: Soap.Logger
   ) {
     super(config, session, logger);
     this.config.scope = this.config.scope ?? "email";
+    if (config.jwks) {
+      this.jwks = new JwtService({ ...config.jwks, audience: config.clientId });
+    }
+
+    if (config.pkce) {
+      this.pkce = new PKCEService(config.pkce);
+    }
   }
 
   async logout(context: TContext): Promise<void> {
@@ -41,10 +135,14 @@ export class OAuth2Strategy<
         this.redirectUser(context, this.config.endpoints.logoutUrl);
       }
     } catch (error) {
-      this.logger?.error("Logout failed:", error);
-      throw new Error("Logout failed.");
+      await this.onFailure("logout", {
+        context,
+        error,
+      });
+      throw error;
     }
   }
+
   /**
    * Extracts user credentials from the authentication context.
    *
@@ -65,143 +163,7 @@ export class OAuth2Strategy<
         };
       }
     }
-    throw new Error("Missing credentials for password grant.");
-  }
-
-  /**
-   * Retrieves an access token from the context.
-   *
-   * @param {TContext} context - The authentication context.
-   * @returns {Promise<string | undefined>} The retrieved access token or undefined if not found.
-   */
-  protected retrieveAccessToken(
-    context: TContext
-  ): Promise<string | undefined> {
-    if (this.config.accessToken?.retrieve) {
-      return this.config.accessToken.retrieve(context);
-    }
-
-    if (typeof context === "object" && "headers" in context) {
-      const authHeader = (context as any).headers?.authorization;
-      if (authHeader?.startsWith("Bearer ")) {
-        return authHeader.split(" ")[1];
-      }
-    }
-
-    if (typeof context === "object" && "cookies" in context) {
-      return (context as any).cookies?.access_token;
-    }
-
-    return undefined;
-  }
-
-  /**
-   * Retrieves a refresh token from the context.
-   *
-   * @param {TContext} context - The authentication context.
-   * @returns {Promise<string | undefined>} The retrieved refresh token or undefined if not found.
-   */
-  protected retrieveRefreshToken(
-    context: TContext
-  ): Promise<string | undefined> {
-    if (this.config.refreshToken?.retrieve) {
-      return this.config.refreshToken.retrieve(context);
-    }
-
-    if (typeof context === "object" && "cookies" in context) {
-      return (context as any).cookies?.refresh_token;
-    }
-
-    return undefined;
-  }
-
-  /**
-   * Stores an access token in the designated storage (e.g., database, session, cookies).
-   *
-   * @param {string} token - The access token to store.
-   * @param {TContext} context - The authentication context.
-   */
-  protected storeAccessToken(token: string, context: TContext): Promise<void> {
-    if (this.config.accessToken?.persistence?.store) {
-      return this.config.accessToken.persistence.store(
-        token,
-        context,
-        this.config.accessToken.issuer.options.expiresIn
-      );
-    }
-
-    if (typeof context === "object" && "cookies" in context) {
-      (context as any).cookies.set("access_token", token, { httpOnly: true });
-    }
-  }
-
-  /**
-   * Stores a refresh token in the designated storage.
-   *
-   * @param {string} token - The refresh token to store.
-   * @param {TContext} context - The authentication context.
-   */
-  protected storeRefreshToken(token: string, context: TContext): Promise<void> {
-    if (this.config.refreshToken?.persistence?.store) {
-      return this.config.refreshToken.persistence.store(
-        token,
-        context,
-        this.config.refreshToken.issuer.options.expiresIn
-      );
-    }
-
-    if (typeof context === "object" && "cookies" in context) {
-      (context as any).cookies.set("refresh_token", token, { httpOnly: true });
-    }
-  }
-
-  /**
-   * Embeds an access token into the response context.
-   *
-   * @param {string} token - The access token.
-   * @param {TContext} context - The authentication context.
-   */
-  protected embedAccessToken(token: string, context: TContext): void {
-    if (this.config.accessToken?.embed) {
-      this.config.accessToken.embed(context, token);
-    } else if (typeof context === "object" && "response" in context) {
-      (context as any).response.setHeader("Authorization", `Bearer ${token}`);
-    }
-  }
-
-  /**
-   * Embeds a refresh token into the response context.
-   *
-   * @param {string} token - The refresh token.
-   * @param {TContext} context - The authentication context.
-   */
-  protected embedRefreshToken(token: string, context: TContext): void {
-    if (this.config.refreshToken?.embed) {
-      return this.config.refreshToken.embed(context, token);
-    } else if (typeof context === "object" && "cookies" in context) {
-      (context as any).cookies.set("refresh_token", token, { httpOnly: true });
-    }
-  }
-
-  async isTokenExpired(token: string): Promise<boolean> {
-    try {
-      const parts = token.split(".");
-      if (parts.length !== 3) {
-        this.logger?.warn(
-          "Non-JWT token provided, cannot determine expiration."
-        );
-        return false;
-      }
-
-      const decoded = JSON.parse(Buffer.from(parts[1], "base64").toString());
-      if (!decoded.exp) return false;
-
-      const currentTime = Math.floor(Date.now() / 1000);
-      return decoded.exp < currentTime;
-    } catch (error) {
-      this.logger?.warn("Failed to decode token:", error);
-      return false;
-    }
+    throw new MissingCredentialsError();
   }
 
   /**
@@ -213,12 +175,13 @@ export class OAuth2Strategy<
   async authenticate(context: TContext): Promise<AuthResult<TUser>> {
     try {
       let user;
+      let session;
       let refreshToken;
-      let accessToken = await this.retrieveAccessToken(context);
+      let accessToken = await this.extractAccessToken(context);
 
       if (!accessToken) {
         this.logger?.info("No access token found, checking for refresh token.");
-        refreshToken = await this.retrieveRefreshToken(context);
+        refreshToken = await this.extractRefreshToken(context);
 
         if (refreshToken) {
           this.logger?.info(
@@ -247,10 +210,10 @@ export class OAuth2Strategy<
             this.embedRefreshToken(refreshToken, context);
           }
         }
-      } else if (accessToken && (await this.isTokenExpired(accessToken))) {
+      } else if (accessToken && this.isTokenExpired(accessToken)) {
         this.logger?.info("Access token expired, attempting refresh.");
 
-        refreshToken = await this.retrieveRefreshToken(context);
+        refreshToken = await this.extractRefreshToken(context);
         if (!refreshToken) {
           throw new MissingTokenError("Refresh");
         }
@@ -269,7 +232,7 @@ export class OAuth2Strategy<
         throw new MissingTokenError("Access");
       }
 
-      user = await this.retrieveUser(accessToken);
+      user = await this.fetchUser(accessToken);
       if (!user) {
         this.logger?.error(
           "User retrieval failed: No user found for access token."
@@ -277,13 +240,19 @@ export class OAuth2Strategy<
         throw new UserNotFoundError();
       }
 
-      // await this.config.storeUserSession?.(user, context);
-      await this.isAuthorized(user);
+      if (this.session) {
+        session = await this.session.issueSession(user, context);
+      }
 
-      return { user, tokens: { accessToken, refreshToken } };
+      await this.role.isAuthorized(user);
+
+      return { user: user, tokens: { accessToken, refreshToken }, session };
     } catch (error) {
-      this.logger?.error("OAuth2 authentication failed:", error);
-      throw new AuthError(error, "OAuth2 authentication failed.");
+      await this.onFailure("authenticate", {
+        context,
+        error,
+      });
+      throw error;
     }
   }
 
@@ -293,7 +262,7 @@ export class OAuth2Strategy<
   }> {
     if (this.config.grantType === "authorization_code") {
       const authorizationCode = this.extractAuthorizationCode(context);
-      this.verifyAuthorizationCode(context, authorizationCode);
+      await this.verifyAuthorizationCode(context, authorizationCode);
       const tokenResult = await this.exchangeCodeForToken(
         context,
         authorizationCode
@@ -311,7 +280,7 @@ export class OAuth2Strategy<
       this.logger?.info("Using password grant.");
       const credentials = await this.getCredentialsForPasswordGrant(context);
       if (!credentials) {
-        throw new Error("Missing credentials for password grant.");
+        throw new MissingCredentialsError();
       }
       const passwordResult = await this.exchangePasswordGrant(
         credentials.identifier,
@@ -320,7 +289,7 @@ export class OAuth2Strategy<
       return { accessToken: passwordResult.accessToken };
     }
 
-    throw new Error(`Unsupported grant type: ${this.config.grantType}`);
+    throw new UnsupportedGrantTypeError(this.config.grantType);
   }
 
   /**
@@ -331,39 +300,12 @@ export class OAuth2Strategy<
    * @param {string} code - The authorization code to verify.
    * @throws {MissingAuthorizationCodeError} If the authorization code is missing.
    */
-  protected verifyAuthorizationCode(context: TContext, code: string) {
+  protected async verifyAuthorizationCode(context: TContext, code: string) {
     if (!code) {
       this.logger?.warn("Authorization code missing, redirecting user.");
-      const authUrl = this.buildAuthorizationUrl(context);
+      const authUrl = await this.buildAuthorizationUrl(context);
       this.redirectUser(context, authUrl);
       throw new MissingAuthorizationCodeError();
-    }
-  }
-
-  /**
-   * Extracts the authorization code from the request context.
-   *
-   * @param {TContext} context - The authentication context.
-   * @returns {string | null} The extracted authorization code or null if not found.
-   */
-  protected extractAuthorizationCode(context: TContext): string | null {
-    if (typeof context === "object" && "query" in context) {
-      return (context as any).query.code || null;
-    }
-    return null;
-  }
-
-  /**
-   * Redirects the user to the specified authorization URL.
-   *
-   * @param {TContext} context - The authentication context.
-   * @param {string} authUrl - The URL to redirect the user to.
-   */
-  protected redirectUser(context: TContext, authUrl: string): void {
-    if (typeof context === "object" && "response" in context) {
-      (context as any).response.redirect(authUrl);
-    } else {
-      this.logger?.warn("Redirect attempted in unsupported context.");
     }
   }
 
@@ -371,25 +313,21 @@ export class OAuth2Strategy<
    * Builds the OAuth2 authorization URL based on the provided configuration.
    *
    * @param {TContext} context - The authentication context.
-   * @returns {string} The constructed authorization URL.
+   * @returns {Promise<string>} The constructed authorization URL.
    */
-  protected buildAuthorizationUrl(context: TContext): string {
+  protected async buildAuthorizationUrl(context: TContext): Promise<string> {
     let authorizationUrl = `${
       this.config.endpoints.authorizationUrl
     }?client_id=${this.config.clientId}&redirect_uri=${encodeURIComponent(
       this.config.redirectUri
     )}&response_type=code&scope=${this.config.scope ?? ""}`;
 
-    if (this.config.pkce) {
-      const codeVerifier = this.config.pkce.generateCodeVerifier
-        ? this.config.pkce.generateCodeVerifier()
-        : OAuth2Tools.generateCodeVerifier();
-
-      const codeChallenge = OAuth2Tools.generateCodeChallenge(codeVerifier);
-
-      // Store the code verifier in the provided storage function or default to session
-      this.config.pkce.storeCodeVerifier?.(context, codeVerifier);
-
+    if (this.pkce) {
+      const codeVerifier = await this.pkce.generateCodeVerifier(context);
+      const codeChallenge = this.pkce.generateCodeChallenge(
+        codeVerifier,
+        context
+      );
       authorizationUrl += `&code_challenge=${codeChallenge}&code_challenge_method=S256`;
     }
 
@@ -408,38 +346,35 @@ export class OAuth2Strategy<
   protected async exchangeCodeForToken(
     context: TContext,
     code: string
-  ): Promise<{ accessToken: string; refreshToken?: string }> {
+  ): Promise<{ accessToken: string; idToken?: string; refreshToken?: string }> {
     const data: Record<string, any> = {
       grant_type: "authorization_code",
       client_id: this.config.clientId,
       code,
-      redirect_uri: this.config.redirectUri,
+      redirectUri: this.config.redirectUri,
     };
 
-    if (this.config.pkce) {
-      const codeVerifier = this.config.pkce.retrieveCodeVerifier?.(context);
+    if (this.pkce) {
+      const codeVerifier = this.pkce.extractCodeVerifier(context);
       if (!codeVerifier) {
-        throw new Error("Missing PKCE code verifier in context.");
+        throw new MissingCodeVerifierError();
       }
       data.code_verifier = codeVerifier;
     } else if (this.config.clientSecret) {
       data.client_secret = this.config.clientSecret;
     }
 
-    const response = await fetch(this.config.endpoints.tokenUrl, {
-      method: "POST",
+    const response = await axios.post(this.config.endpoints.tokenUrl, {
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams(data).toString(),
     });
 
-    if (!response.ok) {
-      throw new Error(`Token exchange failed with status: ${response.status}`);
-    }
+    const tokenData = await response.data();
 
-    const tokenData = await response.json();
     return {
       accessToken: tokenData.access_token,
       refreshToken: tokenData.refresh_token,
+      idToken: tokenData.id_token,
     };
   }
 
@@ -450,13 +385,22 @@ export class OAuth2Strategy<
    * @param {TContext} context - The authentication context.
    * @throws {AuthError} If redirection fails.
    */
-  handleAuthorizationRedirect(context: TContext) {
+  async login(context: TContext) {
     try {
-      const authUrl = this.buildAuthorizationUrl(context);
+      const state = await OAuth2Tools.generateState(this.config);
+      const nonce = await OAuth2Tools.generateNonce(this.config);
+
+      await this.config.state?.persistence?.store?.(state);
+      await this.config.nonce?.persistence?.store?.(nonce);
+
+      const authUrl = await this.buildAuthorizationUrl(context);
       this.redirectUser(context, authUrl);
     } catch (error) {
-      this.logger?.error("Authorization redirect failed:", error);
-      throw new AuthError(error, "Authorization redirect failed.");
+      await this.onFailure("login", {
+        context,
+        error,
+      });
+      throw error;
     }
   }
 
@@ -466,10 +410,10 @@ export class OAuth2Strategy<
    * @param {string} accessToken - The access token to retrieve user data.
    * @returns {Promise<TUser | null>}
    */
-  protected async retrieveUser(accessToken: string): Promise<TUser | null> {
+  protected async fetchUser(accessToken: string): Promise<TUser | null> {
     try {
       if (!this.config.endpoints.userInfoUrl) {
-        throw new Error("User info endpoint not configured.");
+        throw new MissingConfigError("userInfoUrl");
       }
 
       const response = await axios.get(this.config.endpoints.userInfoUrl, {
@@ -510,7 +454,7 @@ export class OAuth2Strategy<
     password: string
   ): Promise<{ accessToken: string }> {
     if (!username || !password) {
-      throw new Error("Missing credentials for password grant.");
+      throw new MissingCredentialsError();
     }
 
     const response = await axios.post(this.config.endpoints.tokenUrl, {
@@ -528,13 +472,15 @@ export class OAuth2Strategy<
    * Refreshes an access token using a refresh token.
    *
    * @param {TContext} context - The authentication context.
-   * @returns {Promise<{ accessToken: string; refreshToken?: string }>}
+   * @returns {Promise<{ accessToken: string; refreshToken?: string; idToken?: string }>}
    */
-  async refreshAccessToken(
-    context: TContext
-  ): Promise<{ accessToken: string; refreshToken?: string }> {
+  async refreshAccessToken(context: TContext): Promise<{
+    accessToken: string;
+    refreshToken?: string;
+    idToken?: string;
+  }> {
     try {
-      const refreshToken = await this.retrieveRefreshToken(context);
+      const refreshToken = await this.extractRefreshToken(context);
       if (!refreshToken) {
         throw new MissingTokenError("Refresh");
       }
@@ -546,6 +492,14 @@ export class OAuth2Strategy<
         refresh_token: refreshToken,
       });
 
+      if (response.data.error) {
+        this.logger?.warn(
+          `OAuth2 error: ${
+            response.data.error_description || response.data.error
+          }`
+        );
+      }
+
       if (response.status !== 200 || !response.data.access_token) {
         throw new Error("Failed to refresh token");
       }
@@ -553,24 +507,66 @@ export class OAuth2Strategy<
       const refreshedTokens = {
         accessToken: response.data.access_token,
         refreshToken: response.data.refresh_token,
+        idToken: response.data.id_token,
       };
 
       await this.storeAccessToken(refreshedTokens.accessToken, context);
+      await this.embedAccessToken(refreshedTokens.accessToken, context);
+
       if (refreshedTokens.refreshToken) {
         await this.storeRefreshToken(refreshedTokens.refreshToken, context);
-      }
-
-      // Embed new tokens in context
-      await this.embedAccessToken(refreshedTokens.accessToken, context);
-      if (refreshedTokens.refreshToken) {
         await this.embedRefreshToken(refreshedTokens.refreshToken, context);
       }
 
       return refreshedTokens;
     } catch (error) {
-      this.logger?.error("Token refresh failed:", error);
-      throw new AuthError(error, "Token refresh failed.");
+      await this.handleTokenRefreshFailure(context);
+      await this.onFailure("refresh_access_token", {
+        error,
+      });
+
+      throw error;
     }
+  }
+
+  protected async handleTokenRefreshFailure(context: TContext) {
+    try {
+      if (this.config.refreshToken) {
+        await this.storeRefreshToken("", context);
+      }
+
+      if (this.config.autoLogoutOnRefreshFailure) {
+        await this.logout(context);
+      }
+    } catch (e) {
+      this.logger?.error(e);
+    }
+  }
+
+  protected async verifyIdToken(idToken: string): Promise<TUser | null> {
+    const storedNonce = await this.config?.nonce?.persistence?.read?.();
+
+    if (storedNonce) {
+      const decodedToken = await this.jwks.verify(idToken);
+
+      if (decodedToken.nonce) {
+        if (
+          (await OAuth2Tools.validateNonce(
+            storedNonce,
+            decodedToken.nonce,
+            this.config.nonce
+          )) === false
+        ) {
+          throw new InvalidNonceError("Invalid nonce value");
+        }
+      }
+
+      if (decodedToken) {
+        return this.config.user?.validateUser?.(decodedToken);
+      }
+    }
+
+    return null;
   }
 
   /**
@@ -579,7 +575,9 @@ export class OAuth2Strategy<
    * @param {string} token - The token to be revoked.
    */
   async revokeToken(token: string): Promise<void> {
-    if (!this.config.endpoints.revocationUrl) return;
+    if (!this.config.endpoints?.revocationUrl) {
+      throw new MissingConfigError("revocationUrl");
+    }
 
     try {
       await axios.post(this.config.endpoints.revocationUrl, {
@@ -589,7 +587,32 @@ export class OAuth2Strategy<
       });
       this.logger?.info("Token revoked successfully.");
     } catch (error) {
-      this.logger?.error("Failed to revoke token:", error);
+      await this.onFailure("revoke_token", {
+        error,
+      });
+
+      throw error;
+    }
+  }
+
+  protected isTokenExpired(token: string): boolean {
+    try {
+      const parts = token.split(".");
+      if (parts.length !== 3) {
+        this.logger?.warn(
+          "Non-JWT token provided, cannot determine expiration."
+        );
+        return false;
+      }
+
+      const decoded = JSON.parse(Buffer.from(parts[1], "base64").toString());
+      if (!decoded.exp) return false;
+
+      const currentTime = Math.floor(Date.now() / 1000);
+      return decoded.exp < currentTime;
+    } catch (error) {
+      this.logger?.warn("Failed to decode token:", error);
+      return false;
     }
   }
 }

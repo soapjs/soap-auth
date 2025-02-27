@@ -1,7 +1,7 @@
 import * as Soap from "@soapjs/soap";
 import {
-  AccountLockedError,
-  AuthError,
+  ExpiredPasswordError,
+  ExpiredResetTokenError,
   InvalidCredentialsError,
   MissingCredentialsError,
   UserNotFoundError,
@@ -9,6 +9,8 @@ import {
 import { AuthResult, CredentialAuthStrategyConfig } from "../types";
 import { BaseAuthStrategy } from "./base-auth.strategy";
 import { SessionHandler } from "../session/session-handler";
+import { JwtStrategy } from "./jwt/jwt.strategy";
+import { PasswordService } from "../services/password.service";
 
 /**
  * Abstract class for credential-based authentication strategies.
@@ -21,6 +23,7 @@ export abstract class CredentialAuthStrategy<
   TContext = unknown,
   TUser = unknown
 > extends BaseAuthStrategy<TContext, TUser> {
+  protected password: PasswordService;
   /**
    * Verifies user credentials.
    *
@@ -42,172 +45,125 @@ export abstract class CredentialAuthStrategy<
   protected abstract extractCredentials(context: TContext): any;
 
   /**
-   * Retrieves user information based on provided credentials.
-   * Must be implemented by specific strategies.
-   *
-   * @param {any} credentials - The user credentials.
-   * @returns {Promise<TUser | null>} The user data if found, otherwise null.
-   */
-  protected abstract retrieveUser(credentials: any): Promise<TUser | null>;
-
-  /**
    * Constructs an instance of CredentialBasedAuthStrategy.
    *
    * @param {CredentialAuthStrategyConfig<TContext, TUser>} config - Configuration options for the strategy.
    * @param {SessionHandler} [session] - Session configuration.
+   * @param {JwtStrategy<TContext, TUser>} [jwt] - JWT configuration.
    * @param {Soap.Logger} [logger] - Logger instance.
    */
   constructor(
     protected config: CredentialAuthStrategyConfig<TContext, TUser>,
     protected session?: SessionHandler,
+    protected jwt?: JwtStrategy<TContext, TUser>,
     protected logger?: Soap.Logger
   ) {
     super(config, session, logger);
+
+    if (config.passwordPolicy) {
+      this.password = new PasswordService(config.passwordPolicy, logger);
+    }
   }
 
-  protected async storeUserSession(
-    user: TUser,
-    context: TContext
-  ): Promise<void> {
-    if (!this.session || !this.config.session) {
-      this.logger?.info(
-        "Session management is not configured. Skipping session storage."
-      );
-      return;
+  /**
+   * Retrieves user information based on provided payload.
+   * Must be implemented by specific strategies.
+   *
+   * @param {unknown} payload.
+   * @returns {Promise<TUser | null>} The user data if found, otherwise null.
+   */
+  protected async fetchUser(payload: unknown): Promise<TUser | null> {
+    if (this.config?.user?.fetchUser) {
+      return this.config.user.fetchUser(payload);
     }
 
-    let sessionId = this.config.session.getSessionId?.(context);
-    if (!sessionId) {
-      sessionId = this.config.session.generateSessionId
-        ? this.config.session.generateSessionId(user, context)
-        : `sid-${Date.now()}-${Math.random().toString(36).substring(7)}`;
-    }
-
-    const sessionData = this.config.session.createSessionData
-      ? this.config.session.createSessionData(user, context)
-      : { user };
-
-    if (this.config.session.store) {
-      await this.config.session.store.setSession(sessionId, sessionData);
-    } else {
-      await this.session.set(sessionId, sessionData);
-    }
-
-    this.config.session.embedSessionId?.(context, sessionId);
-
-    this.logger?.info(`Stored user session with ID: ${sessionId}`);
+    throw new Soap.NotImplementedError("fetchUser");
   }
 
-  /**
-   * Handles authentication errors consistently.
-   *
-   * @param {Error} error - The error encountered during authentication.
-   * @param {TContext} context - The authentication context.
-   * @returns {Promise<never>} Always throws an `AuthError`.
-   */
-  protected async handleAuthenticationError(
-    error: Error,
-    context: TContext
-  ): Promise<never> {
-    this.logger?.error("Authentication failed:", error);
-    await this.onFailure("login", { context, error });
-    throw new AuthError(error, "Authentication failed.");
-  }
-
-  /**
-   * Checks security constraints before proceeding with authentication.
-   *
-   * @param {string} identifier - The user identifier.
-   * @throws {AccountLockedError} If the account is locked.
-   */
-  protected async preAuthChecks(identifier: string): Promise<void> {
-    await this.isAccountLocked(identifier);
-    await this.checkFailedAttempts(identifier);
-    await this.checkRateLimit(identifier);
-    await this.checkPasswordExpiry(identifier);
-  }
-
-  /**
-   * Handles failed login attempts (e.g., incrementing failed attempts count).
-   *
-   * @param {string} identifier - The user identifier.
-   */
-  protected async handleFailedLogin(identifier: string): Promise<void> {
-    await this.config.failedAttempts.incrementFailedAttempts?.(identifier);
-  }
-
-  /**
-   * Handles successful authentication (e.g., resetting failed attempts).
-   *
-   * @param {string} identifier - The user identifier.
-   */
-  protected async handleSuccessfulLogin(identifier: string): Promise<void> {
-    await this.config.failedAttempts.resetFailedAttempts?.(identifier);
-  }
-
-  /**
-   * Finalizes authentication by storing session and performing additional checks.
-   *
-   * @param {TUser} user - The authenticated user.
-   * @param {TContext} context - The authentication context.
-   */
-  protected async finalizeAuthentication(
-    user: TUser,
-    context: TContext
-  ): Promise<void> {
-    await this.checkMfa(user, context);
-    await this.isAuthorized(user);
-    await this.storeUserSession(user, context);
-  }
-
-  /**
-   * Authenticates a user based on provided credentials.
-   *
-   * @param {TContext} [context] - The authentication context.
-   * @returns {Promise<AuthResult<TUser>>} The authentication result containing the user.
-   * @throws {MissingCredentialsError} If credentials are missing.
-   * @throws {InvalidCredentialsError} If credentials are invalid.
-   * @throws {UserNotFoundError} If user data cannot be retrieved.
-   */
   async authenticate(context: TContext): Promise<AuthResult<TUser>> {
     try {
+      await this.rateLimit?.checkRateLimit(context);
+
+      if (this.jwt) {
+        try {
+          return await this.jwt.authenticate(context);
+        } catch (e) {
+          this.logger?.warn(
+            "JWT authentication failed, falling back to session."
+          );
+        }
+      }
+
+      if (this.session) {
+        return await this.authenticateWithSession(context);
+      }
+
+      this.logger?.warn("No authentication method found. Proceeding as guest.");
+
+      if (this.config.allowGuest) {
+        return { user: null };
+      }
+
+      throw new UserNotFoundError();
+    } catch (error) {
+      await this.onFailure("authenticate", {
+        context,
+        error,
+      });
+      throw error;
+    }
+  }
+
+  async login(context: TContext): Promise<AuthResult<TUser>> {
+    try {
+      await this.rateLimit?.checkRateLimit(context);
+
       const credentials = await this.extractCredentials(context);
-      if (!credentials) throw new MissingCredentialsError();
 
-      await this.preAuthChecks(credentials.identifier);
+      if (!credentials) {
+        throw new MissingCredentialsError();
+      }
 
-      const valid = await this.verifyCredentials(
-        credentials.identifier,
-        credentials.password
-      );
-      if (!valid) {
-        await this.handleFailedLogin(credentials.identifier);
+      await this.accountLock?.isAccountLocked(credentials.identifier);
+      await this.throttle?.checkFailedAttempts(credentials.identifier);
+
+      if (
+        (await this.verifyCredentials(
+          credentials.identifier,
+          credentials.password
+        )) === false
+      ) {
+        await this.throttle?.incrementFailedAttempts(credentials.identifier);
         throw new InvalidCredentialsError();
       }
 
-      await this.handleSuccessfulLogin(credentials.identifier);
-      const user = await this.retrieveUser(credentials.identifier);
-      if (!user) throw new UserNotFoundError();
+      const isPasswordChangeRequired =
+        await this.password?.isPasswordChangeRequired(credentials.identifier);
 
-      await this.finalizeAuthentication(user, context);
-      this.auditLoginAttempt(credentials.identifier, true, context);
-      return { user };
-    } catch (e) {
-      this.auditLoginAttempt(null, false, context);
-      return this.handleAuthenticationError(e, context);
-    }
-  }
+      if (isPasswordChangeRequired) {
+        throw new ExpiredPasswordError();
+      }
 
-  /**
-   * Handles session management for authenticated users.
-   *
-   * @param {TUser} user - The authenticated user.
-   * @param {TContext} [context] - The authentication context.
-   */
-  protected async handleSession(user: TUser, context?: TContext) {
-    if (this.session) {
-      const sessionId = this.session.generateSessionId();
-      await this.session.set(sessionId, user);
+      await this.throttle?.resetFailedAttempts(credentials.identifier);
+      const user = await this.fetchUser(credentials.identifier);
+
+      if (!user) {
+        throw new UserNotFoundError();
+      }
+
+      await this.mfa?.checkMfa(user, context);
+      await this.role?.isAuthorized(user);
+
+      const tokens = await this.jwt?.issueTokens(user, context);
+      const session = await this.session?.issueSession(user, context);
+
+      return { user, session, tokens };
+    } catch (error) {
+      await this.onFailure("login", {
+        context,
+        error,
+      });
+      throw error;
     }
   }
 
@@ -225,19 +181,12 @@ export abstract class CredentialAuthStrategy<
    */
   async logout(context: TContext): Promise<void> {
     try {
-      if (this.session) {
-        const sessionId = this.session.getSessionId?.(context);
-        if (!sessionId)
-          throw new Error("Session ID is missing in the context.");
-        await this.session.destroy(sessionId);
-        this.logger?.info(`Session destroyed: ${sessionId}`);
-      }
-
+      await this.session?.logoutSession(context);
       await this.onSuccess("logout", context);
-    } catch (e) {
-      const error = new AuthError(e, "Logout process failed.");
-      this.logger?.error("Error during logout:", error);
-      await this.onFailure("logout", { context, error });
+    } catch (error) {
+      await this.onFailure("logout", {
+        error,
+      });
       throw error;
     }
   }
@@ -246,7 +195,7 @@ export abstract class CredentialAuthStrategy<
    * Initiates the password reset process by generating and sending a reset token.
    *
    * @param {string} identifier - The user's identifier.
-   * @param {string} email - The user's email.
+   * @param {string} [email] - The user's email.
    * @throws {Error} If password reset configuration is missing.
    */
   async requestPasswordReset(
@@ -254,29 +203,25 @@ export abstract class CredentialAuthStrategy<
     email?: string
   ): Promise<void> {
     try {
-      if (!this.config?.passwordPolicy.generateResetToken) {
-        throw new Error("Password reset token generation is not configured.");
-      }
-
-      const token = await this.config.passwordPolicy.generateResetToken(
-        identifier
-      );
+      const token = await this.password.generateResetToken(identifier);
 
       if (email) {
-        await this.config.passwordPolicy.sendResetEmail?.(email, token);
+        await this.password.sendResetEmail(email, token);
       }
 
-      await this.onSuccess("request_password_reset", { identifier });
+      await this.onSuccess("request_password_reset", {
+        identifier,
+        tokens: { reset: token },
+      });
 
       this.logger.info(
         `Password reset requested for identifier: ${identifier}`
       );
-    } catch (e) {
-      const error = new AuthError(e, "Password reset request error.");
-      this.logger.error("Password reset request error:", e);
+    } catch (error) {
       await this.onFailure("request_password_reset", {
         identifier,
-        error: e,
+        email,
+        error,
       });
       throw error;
     }
@@ -296,224 +241,52 @@ export abstract class CredentialAuthStrategy<
     newPassword: string
   ): Promise<void> {
     try {
-      if (!this.config.passwordPolicy?.validateResetToken) {
-        throw new Error("Password reset token validation is not configured.");
+      if (!this.password?.validateResetToken) {
+        throw new Soap.NotImplementedError("validateResetToken");
       }
 
-      const isValid = await this.config.passwordPolicy.validateResetToken(
-        token
-      );
-
-      if (!isValid) {
-        throw new Error("Invalid or expired reset token.");
+      if ((await this.password.validateResetToken(token)) === false) {
+        throw new ExpiredResetTokenError();
       }
 
-      await this.config.passwordPolicy.updatePassword(identifier, newPassword);
+      await this.password.updatePassword(identifier, newPassword);
       await this.onSuccess("password_reset", { identifier });
 
       this.logger.info(
         `Password successfully reset for identifier: ${identifier}`
       );
-
-      this.auditPasswordChange(identifier);
-    } catch (e) {
-      const error = new AuthError(e, "Password reset error");
-      this.logger.error("Password reset error:", e);
+    } catch (error) {
       await this.onFailure("password_reset", {
         identifier,
-        error: e,
+        additional: { token },
+        error,
       });
       throw error;
     }
   }
 
-  /**
-   * Changes the user's password by verifying the old password and updating it with a new one.
-   *
-   * @param {string} email - The user's email.
-   * @param {string} oldPassword - The current password.
-   * @param {string} newPassword - The new password.
-   * @throws {InvalidCredentialsError} If old password is incorrect.
-   */
   async changePassword(
     identifier: string,
     oldPassword: string,
     newPassword: string
   ): Promise<void> {
     try {
-      if (!this.config.credentials.verifyCredentials) {
-        throw new Error("Credential verification is not configured.");
-      }
-
-      const isAuthenticated = await this.config.credentials.verifyCredentials(
-        identifier,
-        oldPassword
-      );
-      if (!isAuthenticated) {
+      if (!(await this.verifyCredentials(identifier, oldPassword))) {
         throw new InvalidCredentialsError();
       }
 
-      await this.config.passwordPolicy?.updatePassword?.(
-        identifier,
-        newPassword
-      );
+      await this.password.updatePassword(identifier, newPassword);
       await this.onSuccess("change_password", { identifier });
 
       this.logger.info(
         `Password changed successfully for identifier: ${identifier}`
       );
-
-      this.auditPasswordChange(identifier);
-    } catch (e) {
-      const error = new AuthError(e, "Change password error");
-      this.logger.error("Change password error:", e);
+    } catch (error) {
       await this.onFailure("change_password", {
         identifier,
-        error: e,
+        error,
       });
       throw error;
-    }
-  }
-
-  /**
-   * Logs a user authentication attempt.
-   *
-   * @param {string} identifier - The user's unique identifier.
-   * @param {boolean} success - Whether the authentication attempt was successful.
-   * @param {TContext} [context] - The authentication context.
-   */
-  protected async auditLoginAttempt(
-    identifier: string,
-    success: boolean,
-    context?: TContext
-  ): Promise<void> {
-    await this.config.audit?.logAttempt?.(identifier, success, context);
-  }
-
-  /**
-   * Logs a password change event.
-   *
-   * @param {string} identifier - The user's unique identifier.
-   * @param {TContext} [context] - The context of the request.
-   */
-  protected async auditPasswordChange(
-    identifier: string,
-    context?: TContext
-  ): Promise<void> {
-    await this.config.audit?.logPasswordChange?.(identifier, context);
-  }
-
-  protected validatePasswordPolicy(password: string): boolean {
-    return this.config.passwordPolicy.validatePassword?.(password) ?? true;
-  }
-
-  /**
-   * Checks if the user has exceeded the allowed number of failed login attempts.
-   * If the threshold is reached, the account is temporarily locked.
-   *
-   * @param {string} identifier - The user's unique identifier.
-   * @throws {AccountLockedError} If the maximum number of failed attempts is exceeded.
-   */
-
-  protected async checkFailedAttempts(identifier: string) {
-    try {
-      if (this.config.security?.maxFailedLoginAttempts) {
-        const failedAttempts =
-          (await this.config.failedAttempts.getFailedAttempts?.(identifier)) ||
-          0;
-
-        if (failedAttempts >= this.config.security.maxFailedLoginAttempts) {
-          this.logger.warn(`User ${identifier} is temporarily locked out.`);
-          throw new AccountLockedError();
-        }
-      }
-    } catch (e) {
-      this.logger.error("Check failed attempts:", e);
-    }
-  }
-
-  /**
-   * Checks if the user's account is currently locked due to security policies.
-   * If the lockout period has expired, the lock is removed.
-   *
-   * @param {string} account - The account identifier.
-   * @param {...unknown[]} args - Additional arguments that may be passed to the function.
-   * @returns {Promise<boolean>} A promise that resolves to true if the account is locked.
-   * @throws {AccountLockedError} If the account is currently locked.
-   */
-  protected async isAccountLocked(account: any): Promise<boolean> {
-    if (await this.config.lock.isAccountLocked?.(account)) {
-      throw new AccountLockedError();
-    }
-
-    if (typeof account === "string" && this.config.security?.lockoutDuration) {
-      const lockoutKey = `lockout:${account}`;
-      const lockoutSession = await this.session?.get(lockoutKey);
-
-      if (lockoutSession) {
-        const elapsed = Date.now() - Number(lockoutSession.date);
-        if (elapsed < this.config.security.lockoutDuration * 60 * 1000) {
-          this.logger.warn(`Account ${account} is temporarily locked out.`);
-          return true;
-        } else {
-          await this.session?.destroy(lockoutKey);
-        }
-      }
-    }
-
-    return false;
-  }
-
-  /**
-   * Increments the count of failed login attempts and locks the account if needed.
-   *
-   * @param {string} account - The user's unique identifier.
-   */
-  protected async incrementFailedAttempts(account: any): Promise<void> {
-    if (this.config.failedAttempts.incrementFailedAttempts) {
-      await this.config.failedAttempts.incrementFailedAttempts(account);
-
-      const failedAttempts =
-        (await this.config.failedAttempts.getFailedAttempts?.(account)) || 0;
-
-      if (
-        this.config.security?.maxFailedLoginAttempts &&
-        failedAttempts >= this.config.security.maxFailedLoginAttempts
-      ) {
-        const lockoutKey = `lockout:${account}`;
-        await this.session?.set(lockoutKey, {
-          date: Date.now(),
-        });
-        this.logger.warn(
-          `Account ${account} has been locked due to failed attempts.`
-        );
-        this.notifyAccountLocked(account);
-      }
-    }
-  }
-
-  /**
-   * Sends a notification when an account is locked.
-   *
-   * @param {string} identifier - The user's unique identifier.
-   */
-  protected async notifyAccountLocked(identifier: string) {
-    if (this.config.security?.notifyOnLockout) {
-      await this.config.security.notifyOnLockout(identifier);
-    }
-  }
-
-  protected async checkPasswordExpiry(identifier: string): Promise<void> {
-    if (this.config.passwordPolicy?.passwordExpirationDays) {
-      const lastChanged =
-        await this.config.passwordPolicy.getLastPasswordChange?.(identifier);
-      if (
-        lastChanged &&
-        Date.now() - Number(lastChanged) >
-          this.config.passwordPolicy.passwordExpirationDays * 86400000
-      ) {
-        throw new Error("Password expired, please reset your password.");
-      }
     }
   }
 }

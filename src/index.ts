@@ -1,5 +1,5 @@
-export * from "./factories";
 export * from "./session";
+export * from "./services";
 export * from "./strategies";
 export * from "./tools";
 export * from "./errors";

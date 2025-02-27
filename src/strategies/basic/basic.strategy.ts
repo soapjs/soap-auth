@@ -3,9 +3,11 @@ import { CredentialAuthStrategy } from "../credential-auth.strategy";
 import { InvalidCredentialsError, MissingCredentialsError } from "../../errors";
 import { BasicContext, BasicStrategyConfig } from "./basic.types";
 import { SessionHandler } from "../../session/session-handler";
+import { JwtStrategy } from "../jwt/jwt.strategy";
+import { prepareBasicConfig } from "./basic.tools";
 
 export class BasicStrategy<
-  TContext extends BasicContext = BasicContext,
+  TContext = unknown,
   TUser = unknown
 > extends CredentialAuthStrategy<TContext, TUser> {
   /**
@@ -13,14 +15,16 @@ export class BasicStrategy<
    *
    * @param {BasicStrategyConfig<TContext, TUser>} config - Configuration options for the strategy.
    * @param {SessionHandler} [session] - Session configuration.
+   * @param {JwtStrategy<TContext, TUser>} [jwt] - JWT configuration.
    * @param {Soap.Logger} [logger] - Logger instance.
    */
   constructor(
     protected config: BasicStrategyConfig<TContext, TUser>,
     protected session?: SessionHandler,
+    protected jwt?: JwtStrategy<TContext, TUser>,
     protected logger?: Soap.Logger
   ) {
-    super(config, session, logger);
+    super(prepareBasicConfig(config), session, jwt, logger);
   }
 
   /**
@@ -34,11 +38,11 @@ export class BasicStrategy<
     identifier: string;
     password: string;
   } {
-    const authHeader = this.config.credentials.extractCredentials
+    const authHeader = this.config.credentials?.extractCredentials
       ? this.config.credentials.extractCredentials<string>(context)
-      : context?.headers?.authorization ||
-        context?.headers?.["x-custom-auth"] ||
-        context?.headers?.["proxy-authorization"];
+      : (context as BasicContext)?.headers?.authorization ||
+        (context as BasicContext)?.headers?.["x-custom-auth"] ||
+        (context as BasicContext)?.headers?.["proxy-authorization"];
 
     if (!authHeader) {
       throw new MissingCredentialsError();
@@ -75,18 +79,5 @@ export class BasicStrategy<
     password: string
   ): Promise<boolean> {
     return this.config.credentials.verifyCredentials(identifier, password);
-  }
-
-  /**
-   * Retrieves user data based on the provided credentials.
-   *
-   * @param {object} credentials - The extracted credentials.
-   * @returns {Promise<TUser | null>} The user data if found, otherwise null.
-   */
-  protected async retrieveUser(credentials: {
-    identifier: string;
-    password: string;
-  }): Promise<TUser | null> {
-    return this.config.user.getUserData(credentials.identifier);
   }
 }

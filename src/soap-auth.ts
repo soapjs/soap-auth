@@ -1,6 +1,4 @@
 import * as Soap from "@soapjs/soap";
-import { HttpAuthStrategyFactory } from "./factories/http-auth-strategy.factory";
-import { SocketAuthStrategyFactory } from "./factories/socket-auth-strategy.factory";
 import { AuthResult, AuthStrategy, SoapAuthConfig } from "./types";
 
 /**
@@ -15,12 +13,8 @@ export class SoapAuth {
    * @param {SoapAuthConfig} config - Configuration object specifying strategies and their options.
    */
   constructor(config: SoapAuthConfig) {
-    const httpFactory = new HttpAuthStrategyFactory(config.logger);
-    const socketFactory = new SocketAuthStrategyFactory(config.logger);
-    const httpStrategies = httpFactory.createStrategies(config);
-    const socketStrategies = socketFactory.createStrategies(config);
-    this.strategies.set("http", httpStrategies);
-    this.strategies.set("socket", socketStrategies);
+    this.strategies.set("http", new Map<string, AuthStrategy>());
+    this.strategies.set("socket", new Map<string, AuthStrategy>());
     this.logger = config.logger;
   }
 

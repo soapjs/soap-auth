@@ -10,10 +10,16 @@ import {
  */
 export interface ApiKeyStrategyConfig<TContext = unknown, TUser = unknown>
   extends AuthResultConfig<TContext, TUser>,
-    ApiKeyTrackingConfig,
-    RateLimitConfig,
-    RoleAuthorizationConfig<TUser>,
-    AccountLockConfig<TContext> {
+    ApiKeyTrackingConfig {
+  role?: RoleAuthorizationConfig<TUser>;
+  rateLimit?: RateLimitConfig;
+  lock?: AccountLockConfig<TContext>;
+  keyType: "one-time" | "long-term" | "session";
+  retrieveUserMaxRetries?: number;
+  retrieveUserRetryDelay?: number;
+  sessionDuration?: number;
+  longTermDuration?: number;
+
   /**
    * A function to extract the API key from the context.
    * @param context - The request context.
@@ -26,7 +32,10 @@ export interface ApiKeyStrategyConfig<TContext = unknown, TUser = unknown>
    * @param apiKey - The API key to lookup the user.
    * @returns A promise resolving to the user object or null if not found.
    */
-  retrieveUserByApiKey: (apiKey: string) => Promise<TUser | null>;
+  retrieveUserByApiKey: (
+    apiKey: string,
+    context?: TContext
+  ) => Promise<TUser | null>;
 
   /**
    * A function to authorize a user for a specific action on a resource.

@@ -264,7 +264,7 @@ const basicAuth = new BasicStrategy({
     },
   },
   user: {
-    getUserData: async (identifier) => database.getUser(identifier),
+    fetchUser: async (identifier) => database.getUser(identifier),
   },
 });
 ```
@@ -293,7 +293,7 @@ const localAuth = new LocalStrategy({
     },
   },
   user: {
-    getUserData: async (identifier) => database.getUser(identifier),
+    fetchUser: async (identifier) => database.getUser(identifier),
   },
 });
 ```
@@ -339,7 +339,7 @@ const jwtAuth = new JwtStrategy({
     retrieve: (context) => context.headers.authorization?.split(" ")[1],
   },
   user: {
-    getUserData: async (decodedToken) => database.getUser(decodedToken.sub),
+    fetchUser: async (decodedToken) => database.getUser(decodedToken.sub),
   },
 });
 ```
