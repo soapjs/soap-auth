@@ -304,7 +304,7 @@ export interface TokenAuthStrategyConfig<TContext = unknown, TUser = unknown>
   extends BaseAuthStrategyConfig<TContext, TUser>,
     TokenAuthConfig<TContext> {
   user?: UserConfig<TUser>;
-  routes?: {
+  routes: {
     login?: AuthRouteConfig;
     logout?: AuthRouteConfig;
     refresh?: AuthRouteConfig;

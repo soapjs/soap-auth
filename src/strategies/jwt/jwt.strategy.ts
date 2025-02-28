@@ -2,7 +2,7 @@ import jwt from "jsonwebtoken";
 import * as Soap from "@soapjs/soap";
 import { TokenAuthStrategy } from "../token-auth.strategy";
 import { UndefinedTokenError, UndefinedTokenSecretError } from "../../errors";
-import { JwtTools } from "./jwt.tools";
+import { JwtTools, prepareJwtConfig } from "./jwt.tools";
 import { TokenAuthStrategyConfig, TokenConfig } from "../../types";
 
 /**
@@ -39,7 +39,7 @@ export class JwtStrategy<
       throw new UndefinedTokenSecretError("Refresh");
     }
 
-    super(config, null, logger);
+    super(prepareJwtConfig(config), null, logger);
 
     this.accessTokenConfig = JwtTools.prepareAccessTokenConfig(
       config.accessToken

@@ -50,6 +50,7 @@ describe("JWTStrategy", () => {
         embed: jest.fn(),
       },
       user: { fetchUser: jest.fn().mockResolvedValue(mockUser) },
+      routes: {},
     };
 
     strategy = new JwtStrategy(mockConfig, mockLogger);

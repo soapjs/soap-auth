@@ -8,6 +8,7 @@ import {
 import { ApiKeyStrategyConfig } from "./api-key.types";
 import { AccountLockedError } from "../../errors";
 import { BaseAuthStrategy } from "../base-auth.strategy";
+import { prepareApiKeyConfig } from "./api-key.tools";
 
 /**
  * Implements an API key authentication strategy.
@@ -33,7 +34,7 @@ export class ApiKeyStrategy<TContext = unknown, TUser = unknown>
     protected config: ApiKeyStrategyConfig<TContext, TUser>,
     logger: Soap.Logger
   ) {
-    super(config, null, logger);
+    super(prepareApiKeyConfig(config), null, logger);
     if (!this.config.extractApiKey || !this.config.retrieveUserByApiKey) {
       throw new Error(
         "ApiKeyStrategy requires extractApiKey and retrieveUserByApiKey functions."
@@ -88,7 +89,6 @@ export class ApiKeyStrategy<TContext = unknown, TUser = unknown>
    */
   async authenticate(context?: TContext): Promise<AuthResult<TUser>> {
     let apiKey: string;
-    const apiKeyType = this.config.keyType ?? "long-term";
 
     try {
       apiKey = this.config.extractApiKey(context);
@@ -115,7 +115,7 @@ export class ApiKeyStrategy<TContext = unknown, TUser = unknown>
 
       await this.role?.isAuthorized(user);
 
-      if (apiKeyType === "one-time") {
+      if (this.config.keyType === "one-time") {
         await this.config.revokeApiKey?.(apiKey);
       }
 

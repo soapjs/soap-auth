@@ -19,6 +19,7 @@ describe("JwtTools", () => {
       issuer: { secretKey, options: { expiresIn: "7d" } },
       verifier: { options: {} },
     },
+    routes: {},
   };
 
   it("should generate an access token", () => {

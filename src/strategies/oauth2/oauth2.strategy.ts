@@ -9,7 +9,7 @@ import {
 } from "../../errors";
 import { AuthResult } from "../../types";
 import { OAuth2StrategyConfig } from "./oauth2.types";
-import { OAuth2Tools } from "./oauth2.tools";
+import { OAuth2Tools, prepareOAuth2Config } from "./oauth2.tools";
 import { SessionHandler } from "../../session/session-handler";
 import { BaseAuthStrategy } from "../base-auth.strategy";
 import { JwtStrategy } from "../jwt/jwt.strategy";
@@ -114,8 +114,8 @@ export abstract class OAuth2Strategy<
     protected jwt?: JwtStrategy<TContext, TUser>,
     protected logger?: Soap.Logger
   ) {
-    super(config, session, logger);
-    this.config.scope = this.config.scope ?? "email";
+    super(prepareOAuth2Config(config), session, logger);
+
     if (config.jwks) {
       this.jwks = new JwtService({ ...config.jwks, audience: config.clientId });
     }

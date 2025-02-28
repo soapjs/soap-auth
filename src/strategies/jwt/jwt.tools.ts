@@ -7,7 +7,7 @@ import {
   UndefinedTokenSecretError,
   InvalidTokenError,
 } from "../../errors";
-import { TokenConfig } from "../../types";
+import { TokenAuthStrategyConfig, TokenConfig } from "../../types";
 
 /**
  * JWT Tools
@@ -272,3 +272,38 @@ export class JwtTools {
     }
   };
 }
+
+export const prepareJwtConfig = <TContext = any, TUser = any>(
+  config: Partial<TokenAuthStrategyConfig<TContext, TUser>>
+): TokenAuthStrategyConfig<TContext, TUser> => {
+  return Soap.removeUndefinedProperties<
+    TokenAuthStrategyConfig<TContext, TUser>
+  >({
+    ...config,
+    routes: {
+      login: config.routes?.login ?? {
+        path: "/auth/jwt/login",
+        method: "POST",
+      },
+      logout: config.routes?.logout ?? {
+        path: "/auth/jwt/logout",
+        method: "POST",
+      },
+      refresh: config.routes?.refresh ?? {
+        path: "/auth/jwt/refresh",
+        method: "POST",
+      },
+      ...config.routes,
+
+      user: {
+        ...config.user,
+        validateUser:
+          config.user?.validateUser ?? (() => Promise.resolve(true)),
+      },
+      accessToken: JwtTools.prepareAccessTokenConfig(config.accessToken),
+      refreshToken: config.refreshToken
+        ? JwtTools.prepareRefreshTokenConfig(config.refreshToken)
+        : undefined,
+    },
+  });
+};

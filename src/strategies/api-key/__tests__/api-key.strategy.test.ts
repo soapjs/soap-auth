@@ -34,7 +34,7 @@ describe("ApiKeyStrategy", () => {
         checkRateLimit: jest.fn(),
         incrementRequestCount: jest.fn(),
       },
-      role: { authorizeByRoles: jest.fn() },
+      role: { authorizeByRoles: jest.fn(), roles: [] },
       revokeApiKey: jest.fn(),
       trackApiKeyUsage: jest.fn(),
       keyType: "long-term",
@@ -101,10 +101,10 @@ describe("ApiKeyStrategy", () => {
   });
 
   it("should throw UnauthorizedRoleError if user has no access", async () => {
-    mockConfig.role.roles = ["admin", "user"];
     mockConfig.extractApiKey.mockReturnValue("valid-api-key");
     mockConfig.retrieveUserByApiKey.mockResolvedValue({ id: 1, role: "guest" });
     mockConfig.role.authorizeByRoles.mockResolvedValue(false);
+    (strategy as any).role.roles = ["admin", "user"];
 
     await expect(strategy.authenticate({})).rejects.toThrow(
       UnauthorizedRoleError

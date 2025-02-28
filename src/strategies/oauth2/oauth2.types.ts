@@ -1,12 +1,9 @@
 import { Algorithm } from "jsonwebtoken";
 import {
-  BaseAuthStrategyConfig,
   CredentailsConfig,
   PKCEConfig,
   AuthRouteConfig,
   TokenAuthStrategyConfig,
-  TokenConfig,
-  UserConfig,
   PersistenceConfig,
   ContextOperationConfig,
 } from "../../types";

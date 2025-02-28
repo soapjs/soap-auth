@@ -1,3 +1,4 @@
+import * as Soap from "@soapjs/soap";
 import { OAuth2NonceConfig, OAuth2StrategyConfig } from "./oauth2.types";
 import { generateRandomString } from "../../tools";
 
@@ -33,3 +34,89 @@ export class OAuth2Tools {
     return decoded.nonce || null;
   }
 }
+
+export const prepareOAuth2Config = <TContext = any, TUser = any>(
+  config: Partial<OAuth2StrategyConfig<TContext, TUser>>
+): OAuth2StrategyConfig<TContext, TUser> => {
+  return Soap.removeUndefinedProperties<OAuth2StrategyConfig<TContext, TUser>>({
+    ...config,
+    grantType: config.grantType ?? "authorization_code",
+    responseType: config.responseType ?? "code",
+    scope: config.scope ?? "openid profile email",
+    autoLogoutOnRefreshFailure: config.autoLogoutOnRefreshFailure ?? false,
+
+    routes: {
+      login: {
+        path: "/auth/oauth2/login",
+        method: "GET",
+        ...config.routes.login,
+      },
+      callback: {
+        path: "/auth/oauth2/callback",
+        method: "GET",
+        ...config.routes.callback,
+      },
+      logout: config.routes?.logout
+        ? {
+            path: "/auth/oauth2/logout",
+            method: "POST",
+            ...config.routes.logout,
+          }
+        : undefined,
+      refresh: config.routes?.refresh
+        ? {
+            path: "/auth/oauth2/refresh",
+            method: "POST",
+            ...config.routes.refresh,
+          }
+        : undefined,
+      revoke: config.routes?.revoke
+        ? {
+            path: "/auth/oauth2/revoke",
+            method: "POST",
+            ...config.routes.revoke,
+          }
+        : undefined,
+      ...config.routes,
+    },
+
+    pkce: config.pkce
+      ? {
+          challenge: {
+            expiresIn: 300,
+            ...config.pkce.challenge,
+          },
+          verifier: {
+            expiresIn: 300,
+            ...config.pkce.verifier,
+          },
+          ...config.pkce,
+        }
+      : undefined,
+
+    state: config.state
+      ? {
+          generateState: () => Math.random().toString(36).substring(2, 15),
+          validateState: (storedState, returnedState) =>
+            storedState === returnedState,
+          ...config.state,
+        }
+      : undefined,
+
+    nonce: config.nonce
+      ? {
+          generateNonce: () => Math.random().toString(36).substring(2, 15),
+          validateNonce: (storedNonce, returnedNonce) =>
+            storedNonce === returnedNonce,
+          ...config.nonce,
+        }
+      : undefined,
+
+    jwks: config.jwks
+      ? {
+          algorithms: ["RS256"],
+          ...config.jwks,
+        }
+      : undefined,
+  });
+};
