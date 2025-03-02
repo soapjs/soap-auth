@@ -22,8 +22,8 @@ import { SoapAuth, JwtStrategy } from "@soapjs/soap-auth";
 
 const auth = new SoapAuth();
 auth.addStrategy(new JwtStrategy({ secret: "super-secret-key" }), "jwt", "http");
-
-const result = await auth.authenticate("http", "jwt", request);
+// ...
+const result = await auth.getHttpStrategy<JwtStrategy>("jwt").authenticate(request);
 console.log(result.user);
 ```
 

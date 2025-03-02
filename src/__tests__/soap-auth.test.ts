@@ -52,36 +52,4 @@ describe("SoapAuth", () => {
     soapAuth.addStrategy(mockStrategy, "oauth", "http");
     expect(soapAuth.listStrategies("http")).toEqual(["jwt", "oauth"]);
   });
-
-  test("authenticate should call authenticate on the correct strategy", async () => {
-    mockStrategy.authenticate.mockResolvedValue({
-      user: { id: "user123" },
-    });
-    soapAuth.addStrategy(mockStrategy, "jwt", "http");
-    await expect(soapAuth.authenticate("http", "jwt", {})).resolves.toEqual({
-      user: { id: "user123" },
-    });
-    expect(mockStrategy.authenticate).toHaveBeenCalledWith({});
-  });
-
-  test("authenticate should throw error if strategy does not exist", async () => {
-    await expect(
-      soapAuth.authenticate("http", "nonexistent", {})
-    ).rejects.toThrow('Authentication strategy "nonexistent" not found.');
-  });
-
-  test("logout should call logout on the correct strategy", async () => {
-    soapAuth.addStrategy(mockStrategy, "jwt", "http");
-    await expect(soapAuth.logout("http", "jwt", {})).resolves.not.toThrow();
-    expect(mockStrategy.logout).toHaveBeenCalledWith({});
-  });
-
-  test("logout should log an error if logout is not implemented", async () => {
-    const strategyWithoutLogout = { authenticate: jest.fn(), init: jest.fn() };
-    soapAuth.addStrategy(strategyWithoutLogout, "basic", "http");
-    await expect(soapAuth.logout("http", "basic", {})).resolves.not.toThrow();
-    expect(mockLogger.error).toHaveBeenCalledWith(
-      'No "logout" implementation in strategy "basic".'
-    );
-  });
 });

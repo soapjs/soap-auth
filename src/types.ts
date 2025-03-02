@@ -5,6 +5,15 @@ import { ApiKeyStrategyConfig } from "./strategies/api-key/api-key.types";
 import { BasicStrategyConfig } from "./strategies/basic/basic.types";
 import { JwtConfig } from "./strategies/jwt/jwt.types";
 
+export type AuthCategories =
+  | "http"
+  | "socket"
+  | "grpc"
+  | "webhook"
+  | "edge"
+  | "isa"
+  | "event";
+
 /**
  * Represents a store that handles session persistence.
  * Implementations can store sessions in memory, files, databases, etc.
@@ -415,6 +424,14 @@ export interface AuthStrategy<TContext = unknown, TUser = unknown> {
    */
   refresh?(refreshToken: string): Promise<string>;
 
+  /**
+   * Logs out the user by destroying the session.
+   *
+   * @param {TContext} [context] - The authentication context.
+   * @throws {Error} If session manager is not configured or session ID is missing.
+   */
+  logout?(context?: TContext): Promise<void>;
+  
   /**
    * Logs out the user by destroying the session.
    *
