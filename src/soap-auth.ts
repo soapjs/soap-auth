@@ -94,10 +94,7 @@ export class SoapAuth {
    * @param {string} name - The strategy identifier.
    * @returns {AuthStrategy} The authentication strategy or throws error if not found.
    */
-  getStrategy<T = unknown>(
-    name: string,
-    type: AuthCategories
-  ): T | AuthStrategy | undefined {
+  getStrategy<T extends AuthStrategy>(name: string, type: AuthCategories): T {
     if (!this.strategies.has(type)) {
       throw new Error(`Invalid strategy type "${type}".`);
     }
@@ -108,10 +105,10 @@ export class SoapAuth {
       throw new Error(`Authentication strategy "${name}" not found.`);
     }
 
-    return strategy;
+    return strategy as T;
   }
 
-  getHttpStrategy<T = unknown>(name: string): T | AuthStrategy | undefined {
+  getHttpStrategy<T extends AuthStrategy>(name: string): T {
     if (!this.strategies.has("http")) {
       throw new Error(`Invalid strategy.`);
     }
@@ -122,10 +119,10 @@ export class SoapAuth {
       throw new Error(`Authentication strategy "${name}" not found.`);
     }
 
-    return strategy;
+    return strategy as T;
   }
 
-  getSocketStrategy<T = unknown>(name: string): T | AuthStrategy | undefined {
+  getSocketStrategy<T extends AuthStrategy>(name: string): T {
     if (!this.strategies.has("socket")) {
       throw new Error(`Invalid strategy.`);
     }
@@ -136,10 +133,10 @@ export class SoapAuth {
       throw new Error(`Authentication strategy "${name}" not found.`);
     }
 
-    return strategy;
+    return strategy as T;
   }
 
-  getEventStrategy<T = unknown>(name: string): T | AuthStrategy | undefined {
+  getEventStrategy<T extends AuthStrategy>(name: string): T {
     if (!this.strategies.has("event")) {
       throw new Error(`Invalid strategy.`);
     }
@@ -150,7 +147,7 @@ export class SoapAuth {
       throw new Error(`Authentication strategy "${name}" not found.`);
     }
 
-    return strategy;
+    return strategy as T;
   }
 
   /**
