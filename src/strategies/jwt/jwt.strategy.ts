@@ -4,6 +4,7 @@ import { TokenAuthStrategy } from "../token-auth.strategy";
 import { UndefinedTokenError, UndefinedTokenSecretError } from "../../errors";
 import { JwtTools, prepareJwtConfig } from "./jwt.tools";
 import { TokenAuthStrategyConfig, TokenConfig } from "../../types";
+import { ValidationUtils, ValidationError } from "../../utils/validation";
 
 /**
  * JWT-based authentication strategy.
@@ -32,6 +33,9 @@ export class JwtStrategy<
     protected config: TokenAuthStrategyConfig<TContext, TUser>,
     protected logger?: Soap.Logger
   ) {
+    // Validate configuration before super call
+    JwtStrategy.validateConfig(config);
+
     if (!config.accessToken.issuer.secretKey) {
       throw new UndefinedTokenSecretError("Access");
     }
@@ -52,6 +56,37 @@ export class JwtStrategy<
   }
 
   /**
+   * Validates JWT strategy configuration
+   */
+  private static validateConfig(config: TokenAuthStrategyConfig<any, any>): void {
+    try {
+      ValidationUtils.required(config, "config");
+      ValidationUtils.required(config.accessToken, "config.accessToken");
+      ValidationUtils.required(config.accessToken.issuer, "config.accessToken.issuer");
+      ValidationUtils.required(config.accessToken.issuer.secretKey, "config.accessToken.issuer.secretKey");
+      ValidationUtils.nonEmptyString(config.accessToken.issuer.secretKey, "config.accessToken.issuer.secretKey");
+      
+      if (config.refreshToken) {
+        ValidationUtils.required(config.refreshToken.issuer, "config.refreshToken.issuer");
+        ValidationUtils.required(config.refreshToken.issuer.secretKey, "config.refreshToken.issuer.secretKey");
+        ValidationUtils.nonEmptyString(config.refreshToken.issuer.secretKey, "config.refreshToken.issuer.secretKey");
+      }
+
+      // Validate user config if provided
+      if (config.user) {
+        ValidationUtils.required(config.user.fetchUser, "config.user.fetchUser");
+        ValidationUtils.function(config.user.fetchUser, "config.user.fetchUser");
+      }
+
+    } catch (error) {
+      if (error instanceof ValidationError) {
+        throw error;
+      }
+      throw new ValidationError(`Invalid JWT configuration: ${error.message}`);
+    }
+  }
+
+  /**
    * Verifies the access token.
    *
    * @param {string} token - The access token to verify.
@@ -60,7 +95,10 @@ export class JwtStrategy<
    */
   protected verifyAccessToken(token: string): Promise<any> {
     try {
-      if (!token) throw new UndefinedTokenError("Access");
+      // Validate input
+      ValidationUtils.required(token, "token");
+      ValidationUtils.jwtToken(token, "token");
+      
       if (!this.accessTokenConfig.issuer.secretKey)
         throw new UndefinedTokenSecretError("Access");
 
@@ -90,7 +128,10 @@ export class JwtStrategy<
    */
   protected verifyRefreshToken(token: string): Promise<any> {
     try {
-      if (!token) throw new UndefinedTokenError("Refresh");
+      // Validate input
+      ValidationUtils.required(token, "token");
+      ValidationUtils.jwtToken(token, "token");
+      
       if (!this.refreshTokenConfig.issuer.secretKey)
         throw new UndefinedTokenSecretError("Refresh");
 
@@ -107,7 +148,7 @@ export class JwtStrategy<
       });
     } catch (error) {
       this.logger?.error("JWT verification failed:", error);
-      error;
+      throw error;
     }
   }
 

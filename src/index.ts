@@ -5,3 +5,4 @@ export * from "./tools";
 export * from "./errors";
 export * from "./types";
 export * from "./soap-auth";
+export * from "./utils/validation";

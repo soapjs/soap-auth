@@ -1,6 +1,7 @@
 import * as Soap from "@soapjs/soap";
 import { SessionHandler } from "../session-handler";
 import { MissingSessionIdError } from "../session.errors";
+import { ValidationError } from "../../utils/validation";
 
 interface MockSessionData {
   user?: {
@@ -32,6 +33,7 @@ describe("SessionHandler", () => {
     };
 
     config = {
+      secret: "test-secret-key",
       store: mockStore,
       sessionKey: "CUSTOMSESSION",
       sessionHeader: "x-custom-session",
@@ -40,7 +42,7 @@ describe("SessionHandler", () => {
         maxAge: 3600,
       },
       generateSessionId: jest.fn(),
-      getSessionId: undefined,
+      getSessionId: jest.fn(),
       embedSessionId: undefined,
       createSessionData: undefined,
     };
@@ -55,11 +57,11 @@ describe("SessionHandler", () => {
     it("should throw if store is not provided", () => {
       expect(() => {
         new SessionHandler({} as any);
-      }).toThrowError("Session store is required.");
+      }).toThrowError("config.secret is required");
     });
 
     it("should set default sessionKey and headerKey if not provided", () => {
-      const newHandler = new SessionHandler({ store: mockStore } as any);
+      const newHandler = new SessionHandler({ secret: "test-secret", store: mockStore } as any);
       expect((newHandler as any).sessionKey).toBe("SESSIONID");
       expect((newHandler as any).headerKey).toBe("x-session-id");
     });
@@ -137,7 +139,7 @@ describe("SessionHandler", () => {
       });
       const handler = new SessionHandler(config, mockLogger as Soap.Logger);
 
-      handler.setSessionId({}, "boom");
+      expect(() => handler.setSessionId({}, "boom")).toThrow("Test error");
       expect(mockLogger.error).toHaveBeenCalledWith(
         "Error setting session ID:",
         expect.any(Error)
@@ -159,26 +161,34 @@ describe("SessionHandler", () => {
     });
 
     it("should return cookie session if present", () => {
+      config.getSessionId = undefined; // Disable custom getSessionId
+      const handler = new SessionHandler(config, mockLogger as Soap.Logger);
       const context: any = { cookies: { CUSTOMSESSION: "cookieValue" } };
-      const sid = sessionHandler.getSessionId(context);
+      const sid = handler.getSessionId(context);
       expect(sid).toBe("cookieValue");
     });
 
     it("should return header session if present", () => {
+      config.getSessionId = undefined; // Disable custom getSessionId
+      const handler = new SessionHandler(config, mockLogger as Soap.Logger);
       const context: any = { headers: { "x-custom-session": "headerValue" } };
-      const sid = sessionHandler.getSessionId(context);
+      const sid = handler.getSessionId(context);
       expect(sid).toBe("headerValue");
     });
 
     it("should return sessionId if set directly on context", () => {
+      config.getSessionId = undefined; // Disable custom getSessionId
+      const handler = new SessionHandler(config, mockLogger as Soap.Logger);
       const context: any = { sessionId: "directValue" };
-      const sid = sessionHandler.getSessionId(context);
+      const sid = handler.getSessionId(context);
       expect(sid).toBe("directValue");
     });
 
     it("should return null if not found", () => {
+      config.getSessionId = undefined; // Disable custom getSessionId
+      const handler = new SessionHandler(config, mockLogger as Soap.Logger);
       const context: any = {};
-      const sid = sessionHandler.getSessionId(context);
+      const sid = handler.getSessionId(context);
       expect(sid).toBeNull();
     });
 
@@ -261,12 +271,9 @@ describe("SessionHandler", () => {
   // setSessionData
   // ------------------------------------------------------------------------------
   describe("setSessionData", () => {
-    it("should warn if sessionId is falsy", async () => {
-      await sessionHandler.setSessionData("", { user: {} });
-      expect(mockLogger.warn).toHaveBeenCalledWith(
-        "No session ID found, unable to set session."
-      );
-      expect(mockStore.setSession).not.toHaveBeenCalled();
+    it("should throw ValidationError if sessionId is falsy", async () => {
+      // This test should expect ValidationError since we now validate sessionId
+      await expect(sessionHandler.setSessionData("", { user: {} })).rejects.toThrow(ValidationError);
     });
 
     it("should call store.setSession with provided data", async () => {
@@ -283,9 +290,9 @@ describe("SessionHandler", () => {
 
     it("should log error if store.setSession fails", async () => {
       mockStore.setSession.mockRejectedValue(new Error("Store error"));
-      await sessionHandler.setSessionData("session123", {
+      await expect(sessionHandler.setSessionData("session123", {
         user: { id: "xyz" },
-      });
+      })).rejects.toThrow("Store error");
       expect(mockLogger.error).toHaveBeenCalledWith(
         "Error storing session data:",
         expect.any(Error)

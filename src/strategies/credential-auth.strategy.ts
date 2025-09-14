@@ -6,7 +6,11 @@ import {
   MissingCredentialsError,
   UserNotFoundError,
 } from "../errors";
-import { AuthResult, CredentialAuthStrategyConfig } from "../types";
+import {
+  AuthResult,
+  CredentialAuthStrategyConfig,
+  NewPasswordOptions,
+} from "../types";
 import { BaseAuthStrategy } from "./base-auth.strategy";
 import { SessionHandler } from "../session/session-handler";
 import { JwtStrategy } from "./jwt/jwt.strategy";
@@ -198,7 +202,7 @@ export abstract class CredentialAuthStrategy<
    * @param {string} [email] - The user's email.
    * @throws {Error} If password reset configuration is missing.
    */
-  async requestPasswordReset(
+  async requestPasswordResetLink(
     identifier: string,
     email?: string
   ): Promise<void> {
@@ -235,21 +239,19 @@ export abstract class CredentialAuthStrategy<
    * @param {string} newPassword - The new password to be set.
    * @throws {Error} If reset token is invalid or expired.
    */
-  async resetPassword(
+  async resetPasswordWithToken(
     identifier: string,
     token: string,
-    newPassword: string
+    newPassword: string,
+    passwordOptions?: NewPasswordOptions
   ): Promise<void> {
     try {
-      if (!this.password?.validateResetToken) {
-        throw new Soap.NotImplementedError("validateResetToken");
-      }
-
-      if ((await this.password.validateResetToken(token)) === false) {
-        throw new ExpiredResetTokenError();
-      }
-
-      await this.password.updatePassword(identifier, newPassword);
+      await this.password?.validateResetToken(token);
+      await this.password.updatePassword(
+        identifier,
+        newPassword,
+        passwordOptions
+      );
       await this.onSuccess("password_reset", { identifier });
 
       this.logger.info(
@@ -265,17 +267,18 @@ export abstract class CredentialAuthStrategy<
     }
   }
 
-  async changePassword(
+  async replacePassword(
     identifier: string,
     oldPassword: string,
-    newPassword: string
+    newPassword: string,
+    options?: NewPasswordOptions
   ): Promise<void> {
     try {
       if (!(await this.verifyCredentials(identifier, oldPassword))) {
         throw new InvalidCredentialsError();
       }
 
-      await this.password.updatePassword(identifier, newPassword);
+      await this.password.updatePassword(identifier, newPassword, options);
       await this.onSuccess("change_password", { identifier });
 
       this.logger.info(

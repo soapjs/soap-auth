@@ -260,14 +260,39 @@ export interface MfaConfig<TUser = unknown, TContext = unknown> {
   incrementMfaAttempts?: (user: TUser) => Promise<void>;
 }
 
+export type PasswordType = "default" | "one-time" | "temporary";
+
+export type NewPasswordOptions = {
+  expiresIn?: number;
+  type: PasswordType;
+  additional?: Record<string, unknown>;
+};
+
+export type PasswordInfo = {
+  type: PasswordType;
+  expiresIn?: number;
+  lastChangeDate?: Date;
+};
+
 export interface PasswordPolicyConfig {
-  validatePassword?: (password: string) => Promise<boolean>;
-  getLastPasswordChange?: (identifier: string) => Promise<Date>;
+  validatePassword?: (
+    password: string,
+    previousPassword?: string
+  ) => Promise<void>;
+  getPasswordPasswordInfo?: (identifier: string) => Promise<PasswordInfo>;
   passwordExpirationDays?: number;
   generateResetToken?: (identifier: string) => Promise<string>;
-  sendResetEmail?: (identifier: string, token: string) => Promise<void>;
-  validateResetToken?: (token: string) => Promise<boolean>;
-  updatePassword?: (identifier: string, newPassword: string) => Promise<void>;
+  sendPasswordResetEmail?: (identifier: string, token: string) => Promise<void>;
+  validatePasswordResetToken?: (token: string) => Promise<boolean>;
+  updatePassword?: (
+    identifier: string,
+    newPassword: string,
+    options?: NewPasswordOptions
+  ) => Promise<void>;
+  generatePassword?: (
+    identifier: string,
+    options: NewPasswordOptions
+  ) => Promise<string>;
 }
 
 export interface UserConfig<TUser = unknown> {
@@ -275,7 +300,13 @@ export interface UserConfig<TUser = unknown> {
   validateUser?: (payload: unknown) => Promise<any>;
 }
 export interface CredentailsConfig<TContext = any> {
-  extractCredentials: <TCredentials = { identifier: string; password: string }>(
+  extractCredentials: <
+    TCredentials = {
+      identifier: string;
+      password: string;
+      newPassword?: string;
+    }
+  >(
     context: TContext
   ) => TCredentials;
   verifyCredentials: (identifier: string, password: string) => Promise<boolean>;
@@ -431,7 +462,7 @@ export interface AuthStrategy<TContext = unknown, TUser = unknown> {
    * @throws {Error} If session manager is not configured or session ID is missing.
    */
   logout?(context?: TContext): Promise<void>;
-  
+
   /**
    * Logs out the user by destroying the session.
    *

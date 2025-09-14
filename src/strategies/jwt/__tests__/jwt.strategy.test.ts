@@ -194,11 +194,11 @@ describe("JWTStrategy", () => {
     expect(token).toBe("mock-refresh-token");
   });
 
-  it("should throw UndefinedTokenSecretError if access secret key is missing", async () => {
+  it("should throw ValidationError if access secret key is missing", async () => {
     mockConfig.accessToken.issuer.secretKey = undefined;
 
     expect(() => new JwtStrategy(mockConfig, mockLogger)).toThrow(
-      UndefinedTokenSecretError
+      "config.accessToken.issuer.secretKey is required"
     );
   });
 });

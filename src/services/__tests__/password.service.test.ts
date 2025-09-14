@@ -14,10 +14,10 @@ describe("PasswordService", () => {
     jest.clearAllMocks();
     mockConfig = {
       validatePassword: jest.fn(),
-      getLastPasswordChange: jest.fn(),
+      getPasswordPasswordInfo: jest.fn(),
       generateResetToken: jest.fn(),
-      sendResetEmail: jest.fn(),
-      validateResetToken: jest.fn(),
+      sendPasswordResetEmail: jest.fn(),
+      validatePasswordResetToken: jest.fn(),
       updatePassword: jest.fn(),
       passwordExpirationDays: 30,
     };
@@ -27,16 +27,16 @@ describe("PasswordService", () => {
   it("validatePassword calls config method", async () => {
     mockConfig.validatePassword.mockReturnValue(true);
     await expect(service.validatePassword(mockPassword)).resolves.toBe(true);
-    expect(mockConfig.validatePassword).toHaveBeenCalledWith(mockPassword);
+    expect(mockConfig.validatePassword).toHaveBeenCalledWith(mockPassword, undefined);
   });
 
-  it("getLastPasswordChange calls config method", async () => {
-    const mockDate = new Date();
-    mockConfig.getLastPasswordChange.mockReturnValue(mockDate);
-    await expect(service.getLastPasswordChange(mockIdentifier)).resolves.toBe(
-      mockDate
+  it("getPasswordPasswordInfo calls config method", async () => {
+    const mockPasswordInfo = { type: "default" as const };
+    mockConfig.getPasswordPasswordInfo.mockReturnValue(mockPasswordInfo);
+    await expect(service.getPasswordPasswordInfo(mockIdentifier)).resolves.toBe(
+      mockPasswordInfo
     );
-    expect(mockConfig.getLastPasswordChange).toHaveBeenCalledWith(
+    expect(mockConfig.getPasswordPasswordInfo).toHaveBeenCalledWith(
       mockIdentifier
     );
   });
@@ -52,15 +52,15 @@ describe("PasswordService", () => {
     await expect(
       service.sendResetEmail(mockIdentifier, "mock-token")
     ).resolves.not.toThrow();
-    expect(mockConfig.sendResetEmail).toHaveBeenCalledWith(
+    expect(mockConfig.sendPasswordResetEmail).toHaveBeenCalledWith(
       mockIdentifier,
       "mock-token"
     );
   });
 
   it("validateResetToken calls config method", async () => {
-    mockConfig.validateResetToken.mockResolvedValue(true);
-    await expect(service.validateResetToken("mock-token")).resolves.toBe(true);
+    mockConfig.validatePasswordResetToken.mockResolvedValue(true);
+    await expect(service.validateResetToken("mock-token")).resolves.toBeUndefined();
   });
 
   it("updatePassword calls config method", async () => {
@@ -69,13 +69,18 @@ describe("PasswordService", () => {
     ).resolves.not.toThrow();
     expect(mockConfig.updatePassword).toHaveBeenCalledWith(
       mockIdentifier,
-      mockPassword
+      mockPassword,
+      undefined
     );
   });
 
   it("isPasswordChangeRequired returns true if password is expired", async () => {
     const pastDate = new Date(Date.now() - 31 * 86400000);
-    mockConfig.getLastPasswordChange.mockResolvedValue(pastDate);
+    mockConfig.getPasswordPasswordInfo.mockResolvedValue({
+      type: "temporary",
+      lastChangeDate: pastDate,
+      expiresIn: 30 * 86400000
+    });
     await expect(
       service.isPasswordChangeRequired(mockIdentifier)
     ).resolves.toBe(true);
@@ -83,16 +88,20 @@ describe("PasswordService", () => {
 
   it("isPasswordChangeRequired returns false if password is within expiration period", async () => {
     const recentDate = new Date(Date.now() - 15 * 86400000);
-    mockConfig.getLastPasswordChange.mockResolvedValue(recentDate);
+    mockConfig.getPasswordPasswordInfo.mockResolvedValue({
+      type: "temporary",
+      lastChangeDate: recentDate,
+      expiresIn: 30 * 86400000
+    });
     await expect(
       service.isPasswordChangeRequired(mockIdentifier)
     ).resolves.toBe(false);
   });
 
-  it("isPasswordChangeRequired throws NotImplementedError if getLastPasswordChange is not defined", async () => {
+  it("isPasswordChangeRequired returns false if getPasswordPasswordInfo is not defined", async () => {
     service = new PasswordService({ passwordExpirationDays: 30 }, mockLogger);
     await expect(
       service.isPasswordChangeRequired(mockIdentifier)
-    ).rejects.toThrow(NotImplementedError);
+    ).resolves.toBe(false);
   });
 });

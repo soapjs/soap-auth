@@ -97,8 +97,8 @@ describe("CredentialAuthStrategy", () => {
       passwordPolicy: {
         updatePassword: jest.fn(),
         generateResetToken: jest.fn(),
-        validateResetToken: jest.fn(),
-        sendResetEmail: jest.fn(),
+        validatePasswordResetToken: jest.fn(),
+        sendPasswordResetEmail: jest.fn(),
       },
       security: {
         maxFailedLoginAttempts: 3,
@@ -257,25 +257,25 @@ describe("CredentialAuthStrategy", () => {
   describe("requestPasswordReset", () => {
     it("should throw NotImplementedError if generateResetToken is not configured", async () => {
       config.passwordPolicy.generateResetToken = undefined;
-      await expect(strategy.requestPasswordReset("testUser")).rejects.toThrow(
-        Soap.NotImplementedError
-      );
+      await expect(
+        strategy.requestPasswordResetLink("testUser")
+      ).rejects.toThrow(Soap.NotImplementedError);
     });
 
     it("should call generateResetToken and sendResetEmail (if email is provided)", async () => {
       config.passwordPolicy.generateResetToken = jest
         .fn()
         .mockResolvedValue("mockToken");
-      config.passwordPolicy.sendResetEmail = jest
+      config.passwordPolicy.sendPasswordResetEmail = jest
         .fn()
         .mockResolvedValue(undefined);
 
-      await strategy.requestPasswordReset("testUser", "test@example.com");
+      await strategy.requestPasswordResetLink("testUser", "test@example.com");
 
       expect(config.passwordPolicy.generateResetToken).toHaveBeenCalledWith(
         "testUser"
       );
-      expect(config.passwordPolicy.sendResetEmail).toHaveBeenCalledWith(
+      expect(config.passwordPolicy.sendPasswordResetEmail).toHaveBeenCalledWith(
         "test@example.com",
         "mockToken"
       );
@@ -287,7 +287,7 @@ describe("CredentialAuthStrategy", () => {
         .mockResolvedValue("mockToken");
       const onSuccessSpy = jest.spyOn(strategy as any, "onSuccess");
 
-      await strategy.requestPasswordReset("testUser");
+      await strategy.requestPasswordResetLink("testUser");
 
       expect(onSuccessSpy).toHaveBeenCalledWith("request_password_reset", {
         identifier: "testUser",
@@ -300,33 +300,38 @@ describe("CredentialAuthStrategy", () => {
     it("should throw NotImplementedError if validateResetToken or updatePassword are not configured", async () => {
       config.passwordPolicy.updatePassword = undefined;
       await expect(
-        strategy.resetPassword("testUser", "token", "newPass")
+        strategy.resetPasswordWithToken("testUser", "token", "newPass")
       ).rejects.toThrow(Soap.NotImplementedError);
     });
 
     it("should throw ExpiredResetTokenError if validateResetToken returns false", async () => {
-      config.passwordPolicy.validateResetToken = jest
+      config.passwordPolicy.validatePasswordResetToken = jest
         .fn()
         .mockResolvedValue(false);
       config.passwordPolicy.updatePassword = jest.fn();
 
       await expect(
-        strategy.resetPassword("testUser", "token", "newPass")
+        strategy.resetPasswordWithToken("testUser", "token", "newPass")
       ).rejects.toThrow(ExpiredResetTokenError);
     });
 
     it("should call updatePassword if the token is valid", async () => {
-      config.passwordPolicy.validateResetToken = jest
+      config.passwordPolicy.validatePasswordResetToken = jest
         .fn()
         .mockResolvedValue(true);
       config.passwordPolicy.updatePassword = jest
         .fn()
         .mockResolvedValue(undefined);
 
-      await strategy.resetPassword("testUser", "validToken", "newPass");
+      await strategy.resetPasswordWithToken(
+        "testUser",
+        "validToken",
+        "newPass"
+      );
       expect(config.passwordPolicy.updatePassword).toHaveBeenCalledWith(
         "testUser",
-        "newPass"
+        "newPass",
+        undefined
       );
     });
   });
@@ -335,7 +340,7 @@ describe("CredentialAuthStrategy", () => {
     it("should throw NotImplementedError if updatePassword is not configured", async () => {
       config.passwordPolicy.updatePassword = undefined;
       await expect(
-        strategy.changePassword("testUser", "oldPass", "newPass")
+        strategy.replacePassword("testUser", "oldPass", "newPass")
       ).rejects.toThrow(Soap.NotImplementedError);
     });
 
@@ -348,7 +353,7 @@ describe("CredentialAuthStrategy", () => {
         .mockResolvedValueOnce(false);
 
       await expect(
-        strategy.changePassword("testUser", "oldPass", "newPass")
+        strategy.replacePassword("testUser", "oldPass", "newPass")
       ).rejects.toThrow(InvalidCredentialsError);
     });
 
@@ -360,10 +365,11 @@ describe("CredentialAuthStrategy", () => {
         .spyOn(strategy as any, "verifyCredentials")
         .mockResolvedValueOnce(true);
 
-      await strategy.changePassword("testUser", "oldPass", "newPass");
+      await strategy.replacePassword("testUser", "oldPass", "newPass");
       expect(config.passwordPolicy.updatePassword).toHaveBeenCalledWith(
         "testUser",
-        "newPass"
+        "newPass",
+        undefined
       );
     });
   });

@@ -24,8 +24,14 @@ describe("LocalStrategy", () => {
         fetchUser: jest.fn(),
       },
       routes: {
-        login: {},
-        logout: {},
+        login: {
+          path: "/login",
+          method: "POST"
+        },
+        logout: {
+          path: "/logout",
+          method: "POST"
+        },
       },
     } as unknown as jest.Mocked<LocalStrategyConfig<any, any>>;
 

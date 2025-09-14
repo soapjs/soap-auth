@@ -7,6 +7,7 @@ import {
   SessionStore,
 } from "../types";
 import { MissingSessionIdError } from "./session.errors";
+import { ValidationUtils, ValidationError } from "../utils/validation";
 
 /**
  * Handles session operations such as retrieving, storing, and generating session IDs.
@@ -21,12 +22,51 @@ export class SessionHandler<
   private headerKey: string;
 
   constructor(private config: SessionConfig, private logger?: Soap.Logger) {
+    // Validate configuration
+    this.validateConfig(config);
+    
     if (!config.store) {
       throw new Error("Session store is required.");
     }
     this.store = config.store;
     this.sessionKey = config.sessionKey || "SESSIONID";
     this.headerKey = config.sessionHeader || "x-session-id";
+  }
+
+  /**
+   * Validates SessionHandler configuration
+   */
+  private validateConfig(config: SessionConfig): void {
+    try {
+      ValidationUtils.required(config, "config");
+      ValidationUtils.required(config.secret, "config.secret");
+      ValidationUtils.nonEmptyString(config.secret, "config.secret");
+      ValidationUtils.required(config.store, "config.store");
+      ValidationUtils.object(config.store, "config.store");
+
+      // Validate optional fields
+      if (config.sessionKey) {
+        ValidationUtils.nonEmptyString(config.sessionKey, "config.sessionKey");
+      }
+      
+      if (config.sessionHeader) {
+        ValidationUtils.nonEmptyString(config.sessionHeader, "config.sessionHeader");
+      }
+
+      // Validate store methods
+      const requiredMethods = ['getSession', 'setSession', 'destroySession', 'touchSession', 'getSessionIds'];
+      for (const method of requiredMethods) {
+        if (typeof config.store[method] !== 'function') {
+          throw new ValidationError(`Session store must implement ${method} method`);
+        }
+      }
+
+    } catch (error) {
+      if (error instanceof ValidationError) {
+        throw error;
+      }
+      throw new ValidationError(`Invalid SessionHandler configuration: ${error.message}`);
+    }
   }
 
   /**
@@ -37,6 +77,10 @@ export class SessionHandler<
    */
   setSessionId(context: TContext, sessionId: string): void {
     try {
+      // Validate inputs
+      ValidationUtils.required(context, "context");
+      ValidationUtils.nonEmptyString(sessionId, "sessionId");
+      
       if (this.config.embedSessionId) {
         this.config.embedSessionId(context, sessionId);
         return;
@@ -66,6 +110,7 @@ export class SessionHandler<
       }
     } catch (error) {
       this.config.logger?.error("Error setting session ID:", error);
+      throw error;
     }
   }
 
@@ -77,6 +122,9 @@ export class SessionHandler<
    */
   getSessionId(context: TContext): string | null {
     try {
+      // Validate input
+      ValidationUtils.required(context, "context");
+      
       if (this.config.getSessionId) {
         return this.config.getSessionId(context);
       }
@@ -129,6 +177,9 @@ export class SessionHandler<
    */
   async getSessionData(sessionId: string): Promise<TData | null> {
     try {
+      // Validate input
+      ValidationUtils.nonEmptyString(sessionId, "sessionId");
+      
       const data = await this.store.getSession<TData>(sessionId);
       return data;
     } catch (error) {
@@ -145,14 +196,15 @@ export class SessionHandler<
    */
   async setSessionData(sessionId: string, data: TData): Promise<void> {
     try {
-      if (!sessionId) {
-        this.config.logger?.warn("No session ID found, unable to set session.");
-        return;
-      }
+      // Validate inputs
+      ValidationUtils.nonEmptyString(sessionId, "sessionId");
+      ValidationUtils.required(data, "data");
+      
       await this.store.setSession(sessionId, data);
       this.config.logger?.info(`Session set for ID: ${sessionId}`);
     } catch (error) {
       this.config.logger?.error("Error storing session data:", error);
+      throw error;
     }
   }
 

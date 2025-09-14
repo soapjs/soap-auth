@@ -56,8 +56,8 @@ export class UserNotFoundError extends Error {
 }
 
 export class InvalidCredentialsError extends Error {
-  constructor() {
-    super("Invalid credentials: Authentication failed.");
+  constructor(message?: string) {
+    super(`Invalid credentials: ${message || 'Authentication failed.'}`);
     this.name = "InvalidCredentialsError";
   }
 }

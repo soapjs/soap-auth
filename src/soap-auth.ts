@@ -1,5 +1,6 @@
 import * as Soap from "@soapjs/soap";
 import { AuthCategories, AuthStrategy, SoapAuthConfig } from "./types";
+import { ValidationUtils, ValidationError } from "./utils/validation";
 
 /**
  * Core class for soap-auth that manages and initializes various authentication strategies.
@@ -13,6 +14,9 @@ export class SoapAuth {
    * @param {SoapAuthConfig} config - Configuration object specifying strategies and their options.
    */
   constructor(config: SoapAuthConfig) {
+    // Validate configuration
+    this.validateConfig(config);
+    
     this.strategies.set("http", new Map<string, AuthStrategy>());
     this.strategies.set("socket", new Map<string, AuthStrategy>());
     this.strategies.set("event", new Map<string, AuthStrategy>());
@@ -21,6 +25,111 @@ export class SoapAuth {
     this.strategies.set("grpc", new Map<string, AuthStrategy>());
     this.strategies.set("edge", new Map<string, AuthStrategy>());
     this.logger = config.logger;
+  }
+
+  /**
+   * Validates the SoapAuth configuration
+   * @param {SoapAuthConfig} config - Configuration to validate
+   * @throws {ValidationError} If configuration is invalid
+   */
+  private validateConfig(config: SoapAuthConfig): void {
+    try {
+      ValidationUtils.required(config, "config");
+      
+      // Validate logger if provided
+      if (config.logger) {
+        ValidationUtils.object(config.logger, "config.logger");
+      }
+
+      // Validate session config if provided
+      if (config.session) {
+        this.validateSessionConfig(config.session);
+      }
+
+      // Validate JWT config if provided
+      if (config.jwt) {
+        this.validateJwtConfig(config.jwt);
+      }
+
+      // Validate HTTP strategies if provided
+      if (config.http) {
+        this.validateHttpStrategies(config.http);
+      }
+
+      // Validate socket strategies if provided
+      if (config.socket) {
+        this.validateSocketStrategies(config.socket);
+      }
+
+    } catch (error) {
+      if (error instanceof ValidationError) {
+        throw error;
+      }
+      throw new ValidationError(`Invalid configuration: ${error.message}`);
+    }
+  }
+
+  /**
+   * Validates session configuration
+   */
+  private validateSessionConfig(session: any): void {
+    ValidationUtils.required(session.secret, "session.secret");
+    ValidationUtils.nonEmptyString(session.secret, "session.secret");
+    
+    if (session.sessionKey) {
+      ValidationUtils.nonEmptyString(session.sessionKey, "session.sessionKey");
+    }
+    
+    if (session.sessionHeader) {
+      ValidationUtils.nonEmptyString(session.sessionHeader, "session.sessionHeader");
+    }
+  }
+
+  /**
+   * Validates JWT configuration
+   */
+  private validateJwtConfig(jwt: any): void {
+    if (jwt.accessToken) {
+      ValidationUtils.required(jwt.accessToken.issuer, "jwt.accessToken.issuer");
+      ValidationUtils.required(jwt.accessToken.issuer.secretKey, "jwt.accessToken.issuer.secretKey");
+      ValidationUtils.nonEmptyString(jwt.accessToken.issuer.secretKey, "jwt.accessToken.issuer.secretKey");
+    }
+    
+    if (jwt.refreshToken) {
+      ValidationUtils.required(jwt.refreshToken.issuer, "jwt.refreshToken.issuer");
+      ValidationUtils.required(jwt.refreshToken.issuer.secretKey, "jwt.refreshToken.issuer.secretKey");
+      ValidationUtils.nonEmptyString(jwt.refreshToken.issuer.secretKey, "jwt.refreshToken.issuer.secretKey");
+    }
+  }
+
+  /**
+   * Validates HTTP strategies configuration
+   */
+  private validateHttpStrategies(http: any): void {
+    ValidationUtils.object(http, "http");
+    
+    if (http.custom) {
+      ValidationUtils.object(http.custom, "http.custom");
+      for (const [name, strategy] of Object.entries(http.custom)) {
+        ValidationUtils.required(strategy, `http.custom.${name}`);
+        ValidationUtils.object(strategy, `http.custom.${name}`);
+      }
+    }
+  }
+
+  /**
+   * Validates socket strategies configuration
+   */
+  private validateSocketStrategies(socket: any): void {
+    ValidationUtils.object(socket, "socket");
+    
+    if (socket.custom) {
+      ValidationUtils.object(socket.custom, "socket.custom");
+      for (const [name, strategy] of Object.entries(socket.custom)) {
+        ValidationUtils.required(strategy, `socket.custom.${name}`);
+        ValidationUtils.object(strategy, `socket.custom.${name}`);
+      }
+    }
   }
 
   /**
@@ -48,6 +157,11 @@ export class SoapAuth {
     name: string,
     type: AuthCategories
   ) {
+    // Validate inputs
+    ValidationUtils.required(strategyInstance, "strategyInstance");
+    ValidationUtils.nonEmptyString(name, "name");
+    ValidationUtils.oneOf(type, "type", ["http", "socket", "event", "isa", "webhook", "grpc", "edge"]);
+
     if (!this.strategies.has(type)) {
       throw new Error(`Invalid strategy type "${type}".`);
     }
@@ -67,11 +181,16 @@ export class SoapAuth {
    * @returns {boolean} True if the strategy was removed, otherwise false.
    */
   removeStrategy(name: string | string[], type: AuthCategories) {
+    // Validate inputs
+    ValidationUtils.required(name, "name");
+    ValidationUtils.oneOf(type, "type", ["http", "socket", "event", "isa", "webhook", "grpc", "edge"]);
+
     if (!this.strategies.has(type)) {
       throw new Error(`Invalid strategy type "${type}".`);
     }
     const names = Array.isArray(name) ? name : [name];
     names.forEach((n) => {
+      ValidationUtils.nonEmptyString(n, "strategy name");
       this.strategies.get(type).delete(n);
     });
   }
@@ -82,6 +201,10 @@ export class SoapAuth {
    * @returns {boolean} True if the strategy exists, otherwise false.
    */
   hasStrategy(name: string, type: AuthCategories): boolean {
+    // Validate inputs
+    ValidationUtils.nonEmptyString(name, "name");
+    ValidationUtils.oneOf(type, "type", ["http", "socket", "event", "isa", "webhook", "grpc", "edge"]);
+
     if (!this.strategies.has(type)) {
       throw new Error(`Invalid strategy type "${type}".`);
     }
@@ -95,6 +218,10 @@ export class SoapAuth {
    * @returns {AuthStrategy} The authentication strategy or throws error if not found.
    */
   getStrategy<T extends AuthStrategy>(name: string, type: AuthCategories): T {
+    // Validate inputs
+    ValidationUtils.nonEmptyString(name, "name");
+    ValidationUtils.oneOf(type, "type", ["http", "socket", "event", "isa", "webhook", "grpc", "edge"]);
+
     if (!this.strategies.has(type)) {
       throw new Error(`Invalid strategy type "${type}".`);
     }

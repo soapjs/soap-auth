@@ -1,6 +1,6 @@
 {
   "name": "@soapjs/soap-auth",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "",
   "homepage": "https://docs.soapjs.com",
   "repository": "https://github.com/soapjs/soap-auth",
@@ -15,7 +15,7 @@
     "prepublish": "npm run clean && tsc --project tsconfig.build.json"
   },
   "devDependencies": {
-    "@soapjs/soap": "^0.5.8",
+    "@soapjs/soap": "file:../soap/soapjs-soap-0.5.26.tgz",
     "@types/jest": "^27.0.3",
     "jest": "^27.4.5",
     "ts-jest": "^27.1.3",
