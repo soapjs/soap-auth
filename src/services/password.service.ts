@@ -1,5 +1,6 @@
 import * as Soap from "@soapjs/soap";
 import bcrypt from "bcrypt";
+import crypto from "crypto";
 import {
   NewPasswordOptions,
   PasswordInfo,
@@ -146,18 +147,19 @@ export class PasswordService {
     ValidationUtils.object(options, "options");
     ValidationUtils.oneOf(options.type, "options.type", ["default", "one-time", "temporary"]);
     
-    let hashedPassword: string;
+    let plaintext: string;
 
     if (this.config.generatePassword) {
-      hashedPassword = await this.config.generatePassword(identifier, options);
+      plaintext = await this.config.generatePassword(identifier, options);
     } else {
-      const tempPassword = Math.random().toString(36).slice(-8);
-      const salt = await bcrypt.genSalt(10);
-      hashedPassword = await bcrypt.hash(tempPassword, salt);
+      plaintext = crypto.randomBytes(12).toString("base64url");
     }
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(plaintext, salt);
 
     await this.updatePassword(identifier, hashedPassword, options);
 
-    return hashedPassword;
+    return plaintext;
   }
 }

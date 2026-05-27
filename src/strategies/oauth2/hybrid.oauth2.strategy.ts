@@ -1,12 +1,9 @@
-import axios from "axios";
+import * as Soap from "@soapjs/soap";
 import {
   MissingAuthorizationCodeError,
   UserNotFoundError,
 } from "../../errors";
-import { AuthResult } from "../../types";
 import { OAuth2Strategy } from "./oauth2.strategy";
-import { InvalidStateError } from "./oauth2.errors";
-import { OAuth2Tools } from "./oauth2.tools";
 
 /**
  * A hybrid authentication strategy that extends a base OAuth2 strategy
@@ -16,8 +13,8 @@ import { OAuth2Tools } from "./oauth2.tools";
  * @template TUser - The user object type returned after successful authentication.
  */
 export abstract class HybridOAuth2Strategy<
-  TContext = unknown,
-  TUser = unknown
+  TContext = Soap.HttpContext,
+  TUser extends Soap.AuthUser = Soap.AuthUser
 > extends OAuth2Strategy<TContext, TUser> {
   /**
    * Authenticates the user by attempting multiple authentication mechanisms in sequence:
@@ -35,7 +32,7 @@ export abstract class HybridOAuth2Strategy<
    *     and a redirect to the OAuth provider is triggered.
    * @throws {UserNotFoundError} If no user can be retrieved from the access token or ID token.
    */
-  async authenticate(context: TContext): Promise<AuthResult<TUser>> {
+  async authenticate(context: TContext): Promise<Soap.AuthResult<TUser> | null> {
     try {
       let tokens;
       let session;
@@ -91,10 +88,7 @@ export abstract class HybridOAuth2Strategy<
           throw new MissingAuthorizationCodeError();
         }
 
-        const returnedState = OAuth2Tools.extractState(context);
-        if (!(await this.config.state?.validateState(context, returnedState))) {
-          throw new InvalidStateError();
-        }
+        await this.validateState(context);
 
         const exchangedTokens = await this.exchangeCodeForToken(context, code);
         accessToken = exchangedTokens.accessToken;

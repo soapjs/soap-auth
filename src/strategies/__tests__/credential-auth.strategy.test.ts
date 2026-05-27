@@ -18,6 +18,8 @@ export class TestCredentialAuthStrategy extends CredentialAuthStrategy<
   any,
   any
 > {
+  readonly name = "test-credential";
+
   constructor(
     config: CredentialAuthStrategyConfig<any, any>,
     session?: SessionHandler,

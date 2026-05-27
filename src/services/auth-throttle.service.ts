@@ -5,7 +5,7 @@ import { AccountLockedError } from "../errors";
 export class AuthThrottleService {
   constructor(
     private config: AuthThrottleConfig,
-    private logger: Soap.Logger
+    private logger?: Soap.Logger
   ) {}
   /**
    * Checks if the user has exceeded the allowed number of failed login attempts.
@@ -22,13 +22,13 @@ export class AuthThrottleService {
         failedAttempts =
           (await this.config.getFailedAttempts?.(identifier)) || 0;
       } catch (e) {
-        this.logger.error("Check failed attempts:", e);
+        this.logger?.error("Check failed attempts:", e);
       }
       if (
         Number.isInteger(failedAttempts) &&
         failedAttempts >= this.config.maxFailedAttempts
       ) {
-        this.logger.warn(`User ${identifier} is temporarily locked out.`);
+        this.logger?.warn(`User ${identifier} is temporarily locked out.`);
         throw new AccountLockedError();
       }
     }

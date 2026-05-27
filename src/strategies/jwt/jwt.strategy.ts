@@ -16,9 +16,10 @@ import { ValidationUtils, ValidationError } from "../../utils/validation";
  * @template TUser - The type of the authenticated user.
  */
 export class JwtStrategy<
-  TContext = unknown,
-  TUser = unknown
+  TContext = Soap.HttpContext,
+  TUser extends Soap.AuthUser = Soap.AuthUser
 > extends TokenAuthStrategy<TContext, TUser> {
+  readonly name = "jwt";
   protected accessTokenConfig: TokenConfig<TContext>;
   protected refreshTokenConfig: TokenConfig<TContext>;
 
@@ -48,9 +49,11 @@ export class JwtStrategy<
     this.accessTokenConfig = JwtTools.prepareAccessTokenConfig(
       config.accessToken
     );
-    this.refreshTokenConfig = JwtTools.prepareRefreshTokenConfig(
-      config.refreshToken
-    );
+    if (config.refreshToken) {
+      this.refreshTokenConfig = JwtTools.prepareRefreshTokenConfig(
+        config.refreshToken
+      );
+    }
 
     this.logger?.info("JWTStrategy initialized with provided configurations.");
   }

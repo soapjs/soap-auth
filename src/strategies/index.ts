@@ -19,5 +19,6 @@ export * from "./local/local.types";
 export * from "./oauth2/oauth2.strategy";
 export * from "./oauth2/oauth2.tools";
 export * from "./oauth2/oauth2.types";
+export * from "./oauth2/providers";
 
 export * from "./token-auth.strategy";

@@ -96,7 +96,7 @@ export const prepareOAuth2Config = <TContext = any, TUser = any>(
 
     state: config.state
       ? {
-          generateState: () => Math.random().toString(36).substring(2, 15),
+          generateState: () => generateRandomString(),
           validateState: (storedState, returnedState) =>
             storedState === returnedState,
           ...config.state,
@@ -105,7 +105,7 @@ export const prepareOAuth2Config = <TContext = any, TUser = any>(
 
     nonce: config.nonce
       ? {
-          generateNonce: () => Math.random().toString(36).substring(2, 15),
+          generateNonce: () => generateRandomString(),
           validateNonce: (storedNonce, returnedNonce) =>
             storedNonce === returnedNonce,
           ...config.nonce,

@@ -7,9 +7,10 @@ import { JwtStrategy } from "../jwt/jwt.strategy";
 import { prepareBasicConfig } from "./basic.tools";
 
 export class BasicStrategy<
-  TContext = unknown,
-  TUser = unknown
+  TContext = Soap.HttpContext,
+  TUser extends Soap.AuthUser = Soap.AuthUser
 > extends CredentialAuthStrategy<TContext, TUser> {
+  readonly name = "basic";
   /**
    * Constructs an instance of BasicStrategy.
    *

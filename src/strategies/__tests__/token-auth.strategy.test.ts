@@ -30,6 +30,7 @@ export class TestTokenAuthStrategy extends TokenAuthStrategy<
   MockContext,
   MockUser
 > {
+  readonly name = "test-token";
   protected async invalidateAccessToken(
     token: string,
     context?: MockContext

@@ -1,8 +1,6 @@
 import * as Soap from "@soapjs/soap";
 import {
   AuthFailureContext,
-  AuthResult,
-  AuthStrategy,
   AuthSuccessContext,
   BaseAuthStrategyConfig,
 } from "../types";
@@ -17,19 +15,22 @@ import { RateLimitService } from "../services/rate-limit.service";
 import { RoleService } from "../services/role.service";
 import { AuthThrottleService } from "../services/auth-throttle.service";
 
-export abstract class BaseAuthStrategy<TContext = unknown, TUser = unknown>
-  implements AuthStrategy<TContext, TUser>
-{
+export abstract class BaseAuthStrategy<
+  TContext = Soap.HttpContext,
+  TUser extends Soap.AuthUser = Soap.AuthUser
+> {
   protected accountLock: AccountLockService<TContext>;
   protected mfa: MfaService<TContext, TUser>;
   protected rateLimit: RateLimitService;
   protected role: RoleService<TUser>;
   protected throttle: AuthThrottleService;
 
+  abstract readonly name: string;
+
   /**
    * Abstract method to authenticate user, must be implemented by concrete strategies.
    */
-  abstract authenticate(context?: TContext): Promise<AuthResult<TUser>>;
+  abstract authenticate(ctx: TContext): Promise<Soap.AuthResult<TUser> | null>;
 
   constructor(
     protected config: BaseAuthStrategyConfig<TContext, TUser>,
@@ -86,7 +87,7 @@ export abstract class BaseAuthStrategy<TContext = unknown, TUser = unknown>
 
   protected async authenticateWithSession(
     context: TContext
-  ): Promise<AuthResult<TUser>> {
+  ): Promise<Soap.AuthResult<TUser>> {
     if (this.rateLimit) {
       await this.rateLimit.checkRateLimit(context);
     }

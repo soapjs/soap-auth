@@ -280,6 +280,15 @@ export const prepareJwtConfig = <TContext = any, TUser = any>(
     TokenAuthStrategyConfig<TContext, TUser>
   >({
     ...config,
+    user: {
+      ...config.user,
+      validateUser:
+        config.user?.validateUser ?? (() => Promise.resolve(true)),
+    },
+    accessToken: JwtTools.prepareAccessTokenConfig(config.accessToken),
+    refreshToken: config.refreshToken
+      ? JwtTools.prepareRefreshTokenConfig(config.refreshToken)
+      : undefined,
     routes: {
       login: config.routes?.login ?? {
         path: "/auth/jwt/login",
@@ -294,16 +303,6 @@ export const prepareJwtConfig = <TContext = any, TUser = any>(
         method: "POST",
       },
       ...config.routes,
-
-      user: {
-        ...config.user,
-        validateUser:
-          config.user?.validateUser ?? (() => Promise.resolve(true)),
-      },
-      accessToken: JwtTools.prepareAccessTokenConfig(config.accessToken),
-      refreshToken: config.refreshToken
-        ? JwtTools.prepareRefreshTokenConfig(config.refreshToken)
-        : undefined,
     },
   });
 };

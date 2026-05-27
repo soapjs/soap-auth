@@ -1,13 +1,18 @@
 import * as Soap from "@soapjs/soap";
-import { AuthCategories, AuthStrategy, SoapAuthConfig } from "./types";
+import { AuthCategories, SoapAuthConfig } from "./types";
 import { ValidationUtils, ValidationError } from "./utils/validation";
+import { SessionHandler } from "./session/session-handler";
+import { JwtStrategy } from "./strategies/jwt/jwt.strategy";
+import { LocalStrategy } from "./strategies/local/local.strategy";
+import { BasicStrategy } from "./strategies/basic/basic.strategy";
+import { ApiKeyStrategy } from "./strategies/api-key/api-key.strategy";
 
 /**
  * Core class for soap-auth that manages and initializes various authentication strategies.
  */
 export class SoapAuth {
-  private requiredStrategyMethods = ["authenticate", "init"];
-  private strategies = new Map<AuthCategories, Map<string, AuthStrategy>>();
+  private requiredStrategyMethods = ["authenticate"];
+  private strategies = new Map<AuthCategories, Map<string, Soap.AuthStrategy>>();
   private logger?: Soap.Logger;
   /**
    * Constructs an instance of SoapAuth, setting up strategies based on provided configuration.
@@ -17,13 +22,13 @@ export class SoapAuth {
     // Validate configuration
     this.validateConfig(config);
     
-    this.strategies.set("http", new Map<string, AuthStrategy>());
-    this.strategies.set("socket", new Map<string, AuthStrategy>());
-    this.strategies.set("event", new Map<string, AuthStrategy>());
-    this.strategies.set("isa", new Map<string, AuthStrategy>());
-    this.strategies.set("webhook", new Map<string, AuthStrategy>());
-    this.strategies.set("grpc", new Map<string, AuthStrategy>());
-    this.strategies.set("edge", new Map<string, AuthStrategy>());
+    this.strategies.set("http", new Map<string, Soap.AuthStrategy>());
+    this.strategies.set("socket", new Map<string, Soap.AuthStrategy>());
+    this.strategies.set("event", new Map<string, Soap.AuthStrategy>());
+    this.strategies.set("isa", new Map<string, Soap.AuthStrategy>());
+    this.strategies.set("webhook", new Map<string, Soap.AuthStrategy>());
+    this.strategies.set("grpc", new Map<string, Soap.AuthStrategy>());
+    this.strategies.set("edge", new Map<string, Soap.AuthStrategy>());
     this.logger = config.logger;
   }
 
@@ -150,10 +155,10 @@ export class SoapAuth {
   /**
    * Adds an authentication strategy to the specified strategies map.
    * @param {string} type - The identifier for the strategy type.
-   * @param {AuthStrategy | undefined} strategyInstance - The strategy instance to add.
+   * @param {Soap.AuthStrategy | undefined} strategyInstance - The strategy instance to add.
    */
   addStrategy(
-    strategyInstance: AuthStrategy | undefined,
+    strategyInstance: Soap.AuthStrategy | undefined,
     name: string,
     type: AuthCategories
   ) {
@@ -215,9 +220,9 @@ export class SoapAuth {
    * Retrieves an authentication strategy by name from either HTTP or WebSocket strategies.
    *
    * @param {string} name - The strategy identifier.
-   * @returns {AuthStrategy} The authentication strategy or throws error if not found.
+   * @returns {Soap.AuthStrategy} The authentication strategy or throws error if not found.
    */
-  getStrategy<T extends AuthStrategy>(name: string, type: AuthCategories): T {
+  getStrategy<T extends Soap.AuthStrategy>(name: string, type: AuthCategories): T {
     // Validate inputs
     ValidationUtils.nonEmptyString(name, "name");
     ValidationUtils.oneOf(type, "type", ["http", "socket", "event", "isa", "webhook", "grpc", "edge"]);
@@ -235,7 +240,7 @@ export class SoapAuth {
     return strategy as T;
   }
 
-  getHttpStrategy<T extends AuthStrategy>(name: string): T {
+  getHttpStrategy<T extends Soap.AuthStrategy>(name: string): T {
     if (!this.strategies.has("http")) {
       throw new Error(`Invalid strategy.`);
     }
@@ -249,7 +254,7 @@ export class SoapAuth {
     return strategy as T;
   }
 
-  getSocketStrategy<T extends AuthStrategy>(name: string): T {
+  getSocketStrategy<T extends Soap.AuthStrategy>(name: string): T {
     if (!this.strategies.has("socket")) {
       throw new Error(`Invalid strategy.`);
     }
@@ -263,7 +268,7 @@ export class SoapAuth {
     return strategy as T;
   }
 
-  getEventStrategy<T extends AuthStrategy>(name: string): T {
+  getEventStrategy<T extends Soap.AuthStrategy>(name: string): T {
     if (!this.strategies.has("event")) {
       throw new Error(`Invalid strategy.`);
     }
@@ -304,7 +309,7 @@ export class SoapAuth {
     if (sequential) {
       for (const strategy of strategies) {
         try {
-          await strategy.init();
+          await strategy.init?.();
         } catch (error) {
           this.logger?.error(`Failed to initialize strategy: ${error.message}`);
         }
@@ -312,15 +317,101 @@ export class SoapAuth {
     } else {
       await Promise.all(
         strategies.map((strategy) =>
-          strategy
-            .init()
-            .catch((error) =>
-              this.logger?.error(
-                `Failed to initialize strategy: ${error.message}`
-              )
+          Promise.resolve(strategy.init?.()).catch((error) =>
+            this.logger?.error(
+              `Failed to initialize strategy: ${error.message}`
             )
+          )
         )
       );
     }
+  }
+
+  /**
+   * Factory method — builds a fully initialized SoapAuth instance from config.
+   *
+   * Instantiates built-in strategies (local, basic, api-key, jwt) and registers
+   * any user-provided custom strategies. OAuth2 strategies must be registered
+   * manually via `addStrategy()` because they require a concrete subclass.
+   *
+   * @param config - Full SoapAuth configuration.
+   * @returns Initialized SoapAuth instance.
+   */
+  static async create(config: SoapAuthConfig): Promise<SoapAuth> {
+    const auth = new SoapAuth(config);
+    const logger = config.logger;
+
+    const sessionHandler = config.session
+      ? new SessionHandler(config.session, logger)
+      : undefined;
+
+    // HTTP strategies
+    if (config.http) {
+      const sharedJwt = config.http.jwt
+        ? new JwtStrategy(config.http.jwt, logger)
+        : undefined;
+
+      if (config.http.local) {
+        auth.addStrategy(
+          new LocalStrategy(config.http.local, sessionHandler, sharedJwt, logger),
+          "local",
+          "http"
+        );
+      }
+
+      if (config.http.basic) {
+        auth.addStrategy(
+          new BasicStrategy(config.http.basic, sessionHandler, sharedJwt, logger),
+          "basic",
+          "http"
+        );
+      }
+
+      if (config.http.apiKey) {
+        auth.addStrategy(
+          new ApiKeyStrategy(config.http.apiKey, logger),
+          "api-key",
+          "http"
+        );
+      }
+
+      if (sharedJwt) {
+        auth.addStrategy(sharedJwt, "jwt", "http");
+      }
+
+      if (config.http.custom) {
+        for (const [name, strategy] of Object.entries(config.http.custom)) {
+          auth.addStrategy(strategy, name, "http");
+        }
+      }
+    }
+
+    // Socket strategies
+    if (config.socket) {
+      if (config.socket.jwt) {
+        auth.addStrategy(
+          new JwtStrategy(config.socket.jwt, logger),
+          "jwt",
+          "socket"
+        );
+      }
+
+      if (config.socket.apiKey) {
+        auth.addStrategy(
+          new ApiKeyStrategy(config.socket.apiKey, logger),
+          "api-key",
+          "socket"
+        );
+      }
+
+      if (config.socket.custom) {
+        for (const [name, strategy] of Object.entries(config.socket.custom)) {
+          auth.addStrategy(strategy, name, "socket");
+        }
+      }
+    }
+
+    await auth.init();
+    return auth;
   }
 }

@@ -19,9 +19,10 @@ import { ValidationUtils, ValidationError } from "../../utils/validation";
  * @template TUser - The type of the authenticated user object.
  */
 export class LocalStrategy<
-  TContext = unknown,
-  TUser = unknown
+  TContext = Soap.HttpContext,
+  TUser extends Soap.AuthUser = Soap.AuthUser
 > extends CredentialAuthStrategy<TContext, TUser> {
+  readonly name = "local";
   /**
    * Constructs an instance of LocalStrategy.
    *

@@ -1,6 +1,6 @@
 import { Algorithm } from "jsonwebtoken";
 import {
-  CredentailsConfig,
+  CredentialsConfig,
   PKCEConfig,
   AuthRouteConfig,
   TokenAuthStrategyConfig,
@@ -79,7 +79,7 @@ export interface OAuth2StrategyConfig<TContext = unknown, TUser = unknown>
     | "refresh_token"
     | string;
   endpoints: OAuth2Endpoints;
-  credentials?: CredentailsConfig<TContext>;
+  credentials?: CredentialsConfig<TContext>;
   pkce?: PKCEConfig<TContext>;
   routes: {
     login: AuthRouteConfig;

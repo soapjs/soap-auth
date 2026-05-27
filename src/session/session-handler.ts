@@ -1,5 +1,5 @@
 import * as Soap from "@soapjs/soap";
-import { v4 as uuidv4 } from "uuid";
+import { randomUUID } from "crypto";
 import {
   SessionConfig,
   SessionData,
@@ -153,7 +153,7 @@ export class SessionHandler<
    * @returns {string} A newly generated session ID.
    */
   generateSessionId(): string {
-    return this.config.generateSessionId?.() || uuidv4();
+    return this.config.generateSessionId?.() || randomUUID();
   }
 
   /**

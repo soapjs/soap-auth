@@ -1,4 +1,7 @@
 import * as Soap from "@soapjs/soap";
+
+export type AuthResult<TUser extends Soap.AuthUser = Soap.AuthUser> = Soap.AuthResult<TUser>;
+export type AuthStrategy<TUser extends Soap.AuthUser = Soap.AuthUser> = Soap.AuthStrategy<TUser>;
 import { LocalStrategyConfig } from "./strategies/local/local.types";
 import { OAuth2StrategyConfig } from "./strategies/oauth2/oauth2.types";
 import { ApiKeyStrategyConfig } from "./strategies/api-key/api-key.types";
@@ -299,7 +302,9 @@ export interface UserConfig<TUser = unknown> {
   fetchUser: (payload: unknown) => Promise<TUser | null>;
   validateUser?: (payload: unknown) => Promise<any>;
 }
-export interface CredentailsConfig<TContext = any> {
+export type CredentailsConfig<TContext = any> = CredentialsConfig<TContext>;
+
+export interface CredentialsConfig<TContext = any> {
   extractCredentials: <
     TCredentials = {
       identifier: string;
@@ -317,7 +322,7 @@ export interface CredentialAuthStrategyConfig<
   TUser = unknown
 > extends BaseAuthStrategyConfig<TContext, TUser> {
   passwordPolicy?: PasswordPolicyConfig;
-  credentials?: CredentailsConfig<TContext>;
+  credentials?: CredentialsConfig<TContext>;
   jwt?: TokenAuthConfig<TContext>;
   user?: UserConfig<TUser>;
   allowGuest?: boolean;
@@ -408,81 +413,24 @@ export type AuthFailureContext<TContext = unknown> = {
   additional?: Record<string, unknown>;
 };
 
-export type AuthResult<TUser = unknown, TSessionData = unknown> = {
-  user: TUser;
-  session?: SessionInfo<TSessionData>;
-  tokens?: {
-    accessToken?: string;
-    refreshToken?: string | null;
-    apiKey?: string | null;
-    [key: string]: string;
-  };
-};
-
-/**
- * Represents a generic authentication strategy.
- */
-export interface AuthStrategy<TContext = unknown, TUser = unknown> {
-  /**
-   * (Optional) Asynchronous initialization method for the strategy.
-   * Can be used to fetch keys, initialize connections, etc.
-   */
-  init?(...args: unknown[]): Promise<void>;
-
-  /**
-   * Authenticates input data (e.g., token, credentials) and returns user info.
-   * @param context - Data required for authentication.
-   * @returns A promise resolving with authenticated user data.
-   */
-  authenticate(
-    context?: TContext,
-    ...args: unknown[]
-  ): Promise<AuthResult<TUser> | null>;
-
-  /**
-   * (Optional) Authorizes a user for a specific action on a resource.
-   * @param user - Authenticated user data.
-   * @param action - Action to authorize (e.g., "read", "write").
-   * @param resource - Optional resource identifier.
-   * @returns A promise resolving to a boolean indicating authorization status.
-   */
-  authorize?(user: any, action: string, resource?: string): Promise<boolean>;
-
-  /**
-   * (Optional) Refreshes an authentication token.
-   * @param refreshToken - Current refresh token.
-   * @returns A promise resolving to a new token.
-   */
-  refresh?(refreshToken: string): Promise<string>;
-
-  /**
-   * Logs out the user by destroying the session.
-   *
-   * @param {TContext} [context] - The authentication context.
-   * @throws {Error} If session manager is not configured or session ID is missing.
-   */
-  logout?(context?: TContext): Promise<void>;
-
-  /**
-   * Logs out the user by destroying the session.
-   *
-   * @param {TContext} [context] - The authentication context.
-   * @throws {Error} If session manager is not configured or session ID is missing.
-   */
-  logout?(context?: TContext): Promise<void>;
-}
 
 /**
  * Configuration interface for soap-auth, allowing customization of various http authentication strategies.
  *
  * @interface SoapHttpAuthConfig
  */
-export interface SoapHttpAuthConfig<TContext = unknown, TUser = unknown> {
+export interface SoapHttpAuthConfig<TContext = unknown, TUser extends Soap.AuthUser = Soap.AuthUser> {
   /**
    * Configuration for local username/password strategy.
    * @type {LocalStrategyConfig | undefined}
    */
   local?: LocalStrategyConfig<TContext, TUser>;
+
+  /**
+   * Configuration for JWT token strategy (standalone HTTP strategy).
+   * @type {JwtConfig | undefined}
+   */
+  jwt?: JwtConfig<TContext, TUser>;
 
   /**
    * Configuration for multiple OAuth2 providers.
@@ -506,9 +454,9 @@ export interface SoapHttpAuthConfig<TContext = unknown, TUser = unknown> {
   /**
    * Custom authentication strategies.
    * The key is a custom label, and the value is an implementation of AuthStrategy.
-   * @type {{ [label: string]: AuthStrategy }}
+   * @type {{ [label: string]: Soap.AuthStrategy }}
    */
-  custom: { [label: string]: AuthStrategy };
+  custom?: { [label: string]: Soap.AuthStrategy };
 }
 
 /**
@@ -516,7 +464,7 @@ export interface SoapHttpAuthConfig<TContext = unknown, TUser = unknown> {
  *
  * @interface SoapSocketAuthConfig
  */
-export interface SoapSocketAuthConfig<TContext = unknown, TUser = unknown> {
+export interface SoapSocketAuthConfig<TContext = unknown, TUser extends Soap.AuthUser = Soap.AuthUser> {
   /**
    * Configuration for token-based socket authentication.
    * @type {JwtConfig | undefined}
@@ -532,9 +480,9 @@ export interface SoapSocketAuthConfig<TContext = unknown, TUser = unknown> {
   /**
    * Custom authentication strategies.
    * The key is a custom provider identifier, and the value is an implementation of AuthStrategy.
-   * @type {{ [provider: string]: AuthStrategy }}
+   * @type {{ [provider: string]: Soap.AuthStrategy }}
    */
-  custom: { [provider: string]: AuthStrategy };
+  custom?: { [provider: string]: Soap.AuthStrategy };
 }
 
 /**
@@ -542,7 +490,7 @@ export interface SoapSocketAuthConfig<TContext = unknown, TUser = unknown> {
  *
  * @interface SoapAuthConfig
  */
-export interface SoapAuthConfig<TContext = unknown, TUser = unknown> {
+export interface SoapAuthConfig<TContext = unknown, TUser extends Soap.AuthUser = Soap.AuthUser> {
   /**
    * Configuration for session management applicable to all strategies unless overridden.
    * @type {SessionConfig | undefined}

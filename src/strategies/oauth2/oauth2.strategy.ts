@@ -1,5 +1,4 @@
 import * as Soap from "@soapjs/soap";
-import axios from "axios";
 import {
   MissingTokenError,
   MissingAuthorizationCodeError,
@@ -7,7 +6,6 @@ import {
   MissingConfigError,
   MissingCredentialsError,
 } from "../../errors";
-import { AuthResult } from "../../types";
 import { OAuth2StrategyConfig } from "./oauth2.types";
 import { OAuth2Tools, prepareOAuth2Config } from "./oauth2.tools";
 import { SessionHandler } from "../../session/session-handler";
@@ -17,6 +15,7 @@ import { JwtService } from "../../services/jwks.service";
 import { PKCEService } from "../../services/pkce.service";
 import {
   InvalidNonceError,
+  InvalidStateError,
   MissingCodeVerifierError,
   UnsupportedGrantTypeError,
 } from "./oauth2.errors";
@@ -28,9 +27,10 @@ import {
  * @template TUser - The type of the authenticated user.
  */
 export abstract class OAuth2Strategy<
-  TContext = unknown,
-  TUser = unknown
+  TContext = Soap.HttpContext,
+  TUser extends Soap.AuthUser = Soap.AuthUser
 > extends BaseAuthStrategy<TContext, TUser> {
+  abstract readonly name: string;
   protected jwks: JwtService;
   protected pkce: PKCEService<TContext>;
 
@@ -172,7 +172,7 @@ export abstract class OAuth2Strategy<
    * @param {TContext} context - The authentication context.
    * @returns {Promise<AuthResult<TUser>>}
    */
-  async authenticate(context: TContext): Promise<AuthResult<TUser>> {
+  async authenticate(context: TContext): Promise<Soap.AuthResult<TUser> | null> {
     try {
       let user;
       let session;
@@ -244,7 +244,7 @@ export abstract class OAuth2Strategy<
         session = await this.session.issueSession(user, context);
       }
 
-      await this.role.isAuthorized(user);
+      await this.role?.isAuthorized(user);
 
       return { user: user, tokens: { accessToken, refreshToken }, session };
     } catch (error) {
@@ -263,6 +263,7 @@ export abstract class OAuth2Strategy<
     if (this.config.grantType === "authorization_code") {
       const authorizationCode = this.extractAuthorizationCode(context);
       await this.verifyAuthorizationCode(context, authorizationCode);
+      await this.validateState(context);
       const tokenResult = await this.exchangeCodeForToken(
         context,
         authorizationCode
@@ -303,24 +304,97 @@ export abstract class OAuth2Strategy<
   protected async verifyAuthorizationCode(context: TContext, code: string) {
     if (!code) {
       this.logger?.warn("Authorization code missing, redirecting user.");
-      const authUrl = await this.buildAuthorizationUrl(context);
-      this.redirectUser(context, authUrl);
+      await this.startAuthorizationFlow(context);
       throw new MissingAuthorizationCodeError();
     }
+  }
+
+  /**
+   * Generates and persists the CSRF `state` (and OIDC `nonce` when configured),
+   * builds the authorization URL embedding them, and redirects the user.
+   *
+   * @param {TContext} context - The authentication context.
+   */
+  protected async startAuthorizationFlow(context: TContext): Promise<void> {
+    let state: string | undefined;
+    let nonce: string | undefined;
+
+    if (this.config.state) {
+      state = await OAuth2Tools.generateState(this.config);
+      await this.config.state.persistence?.store?.(state);
+    }
+
+    if (this.config.nonce) {
+      nonce = await OAuth2Tools.generateNonce(this.config);
+      await this.config.nonce.persistence?.store?.(nonce);
+    }
+
+    const authUrl = await this.buildAuthorizationUrl(context, state, nonce);
+    this.redirectUser(context, authUrl);
+  }
+
+  /**
+   * Validates the `state` returned on the callback against the persisted value
+   * to defend against CSRF. No-op when state checking is not configured.
+   * The stored state is single-use and removed after a successful check.
+   *
+   * @param {TContext} context - The authentication context.
+   * @throws {InvalidStateError} If the returned state does not match.
+   */
+  protected async validateState(context: TContext): Promise<void> {
+    if (!this.config.state) {
+      return;
+    }
+
+    const returnedState = OAuth2Tools.extractState(context);
+    const storedState = (await this.config.state.persistence?.read?.()) as
+      | string
+      | null;
+
+    const valid = this.config.state.validateState
+      ? await this.config.state.validateState(storedState as any, returnedState)
+      : !!storedState && storedState === returnedState;
+
+    if (!valid) {
+      throw new InvalidStateError();
+    }
+
+    await this.config.state.persistence?.remove?.();
   }
 
   /**
    * Builds the OAuth2 authorization URL based on the provided configuration.
    *
    * @param {TContext} context - The authentication context.
+   * @param {string} [state] - CSRF state to embed in the URL.
+   * @param {string} [nonce] - OIDC nonce to embed in the URL.
    * @returns {Promise<string>} The constructed authorization URL.
    */
-  protected async buildAuthorizationUrl(context: TContext): Promise<string> {
+  protected async buildAuthorizationUrl(
+    context: TContext,
+    state?: string,
+    nonce?: string
+  ): Promise<string> {
+    const params = new URLSearchParams({
+      client_id: this.config.clientId,
+      redirect_uri: this.config.redirectUri,
+      response_type: "code",
+      scope: Array.isArray(this.config.scope)
+        ? this.config.scope.join(" ")
+        : this.config.scope ?? "",
+    });
+
+    if (state) {
+      params.set("state", state);
+    }
+
+    if (nonce) {
+      params.set("nonce", nonce);
+    }
+
     let authorizationUrl = `${
       this.config.endpoints.authorizationUrl
-    }?client_id=${this.config.clientId}&redirect_uri=${encodeURIComponent(
-      this.config.redirectUri
-    )}&response_type=code&scope=${this.config.scope ?? ""}`;
+    }?${params.toString()}`;
 
     if (this.pkce) {
       const codeVerifier = await this.pkce.generateCodeVerifier(context);
@@ -364,12 +438,17 @@ export abstract class OAuth2Strategy<
       data.client_secret = this.config.clientSecret;
     }
 
-    const response = await axios.post(this.config.endpoints.tokenUrl, {
+    const response = await fetch(this.config.endpoints.tokenUrl, {
+      method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams(data).toString(),
     });
 
-    const tokenData = await response.data();
+    if (!response.ok) {
+      throw new Error(`Token exchange failed: ${response.status} ${response.statusText}`);
+    }
+
+    const tokenData = await response.json();
 
     return {
       accessToken: tokenData.access_token,
@@ -387,14 +466,7 @@ export abstract class OAuth2Strategy<
    */
   async login(context: TContext) {
     try {
-      const state = await OAuth2Tools.generateState(this.config);
-      const nonce = await OAuth2Tools.generateNonce(this.config);
-
-      await this.config.state?.persistence?.store?.(state);
-      await this.config.nonce?.persistence?.store?.(nonce);
-
-      const authUrl = await this.buildAuthorizationUrl(context);
-      this.redirectUser(context, authUrl);
+      await this.startAuthorizationFlow(context);
     } catch (error) {
       await this.onFailure("login", {
         context,
@@ -416,11 +488,15 @@ export abstract class OAuth2Strategy<
         throw new MissingConfigError("userInfoUrl");
       }
 
-      const response = await axios.get(this.config.endpoints.userInfoUrl, {
+      const response = await fetch(this.config.endpoints.userInfoUrl, {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
 
-      return (await this.config.user.validateUser(response.data)) || null;
+      if (!response.ok) {
+        throw new Error(`User info request failed: ${response.status}`);
+      }
+
+      return (await this.config.user.validateUser(await response.json())) || null;
     } catch (error) {
       this.logger?.error("Failed to fetch user information:", error);
       return null;
@@ -435,13 +511,22 @@ export abstract class OAuth2Strategy<
   protected async exchangeClientCredentials(): Promise<{
     accessToken: string;
   }> {
-    const response = await axios.post(this.config.endpoints.tokenUrl, {
-      grant_type: "client_credentials",
-      client_id: this.config.clientId,
-      client_secret: this.config.clientSecret,
+    const response = await fetch(this.config.endpoints.tokenUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "client_credentials",
+        client_id: this.config.clientId,
+        client_secret: this.config.clientSecret,
+      }).toString(),
     });
 
-    return { accessToken: response.data.access_token };
+    if (!response.ok) {
+      throw new Error(`Client credentials exchange failed: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return { accessToken: data.access_token };
   }
 
   /**
@@ -457,15 +542,24 @@ export abstract class OAuth2Strategy<
       throw new MissingCredentialsError();
     }
 
-    const response = await axios.post(this.config.endpoints.tokenUrl, {
-      grant_type: "password",
-      client_id: this.config.clientId,
-      client_secret: this.config.clientSecret,
-      username,
-      password,
+    const response = await fetch(this.config.endpoints.tokenUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "password",
+        client_id: this.config.clientId,
+        client_secret: this.config.clientSecret,
+        username,
+        password,
+      }).toString(),
     });
 
-    return { accessToken: response.data.access_token };
+    if (!response.ok) {
+      throw new Error(`Password grant failed: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return { accessToken: data.access_token };
   }
 
   /**
@@ -485,29 +579,33 @@ export abstract class OAuth2Strategy<
         throw new MissingTokenError("Refresh");
       }
 
-      const response = await axios.post(this.config.endpoints.tokenUrl, {
-        grant_type: "refresh_token",
-        client_id: this.config.clientId,
-        client_secret: this.config.clientSecret,
-        refresh_token: refreshToken,
+      const response = await fetch(this.config.endpoints.tokenUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          grant_type: "refresh_token",
+          client_id: this.config.clientId,
+          client_secret: this.config.clientSecret,
+          refresh_token: refreshToken,
+        }).toString(),
       });
 
-      if (response.data.error) {
+      const responseData = await response.json();
+
+      if (responseData.error) {
         this.logger?.warn(
-          `OAuth2 error: ${
-            response.data.error_description || response.data.error
-          }`
+          `OAuth2 error: ${responseData.error_description || responseData.error}`
         );
       }
 
-      if (response.status !== 200 || !response.data.access_token) {
+      if (!response.ok || !responseData.access_token) {
         throw new Error("Failed to refresh token");
       }
 
       const refreshedTokens = {
-        accessToken: response.data.access_token,
-        refreshToken: response.data.refresh_token,
-        idToken: response.data.id_token,
+        accessToken: responseData.access_token,
+        refreshToken: responseData.refresh_token,
+        idToken: responseData.id_token,
       };
 
       await this.storeAccessToken(refreshedTokens.accessToken, context);
@@ -580,11 +678,20 @@ export abstract class OAuth2Strategy<
     }
 
     try {
-      await axios.post(this.config.endpoints.revocationUrl, {
-        token,
-        client_id: this.config.clientId,
-        client_secret: this.config.clientSecret,
+      const response = await fetch(this.config.endpoints.revocationUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          token,
+          client_id: this.config.clientId,
+          client_secret: this.config.clientSecret,
+        }).toString(),
       });
+
+      if (!response.ok) {
+        throw new Error(`Token revocation failed: ${response.status}`);
+      }
+
       this.logger?.info("Token revoked successfully.");
     } catch (error) {
       await this.onFailure("revoke_token", {

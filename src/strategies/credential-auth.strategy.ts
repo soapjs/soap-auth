@@ -7,7 +7,6 @@ import {
   UserNotFoundError,
 } from "../errors";
 import {
-  AuthResult,
   CredentialAuthStrategyConfig,
   NewPasswordOptions,
 } from "../types";
@@ -24,8 +23,8 @@ import { PasswordService } from "../services/password.service";
  * @template TUser - The type of the authenticated user.
  */
 export abstract class CredentialAuthStrategy<
-  TContext = unknown,
-  TUser = unknown
+  TContext = Soap.HttpContext,
+  TUser extends Soap.AuthUser = Soap.AuthUser
 > extends BaseAuthStrategy<TContext, TUser> {
   protected password: PasswordService;
   /**
@@ -84,7 +83,7 @@ export abstract class CredentialAuthStrategy<
     throw new Soap.NotImplementedError("fetchUser");
   }
 
-  async authenticate(context: TContext): Promise<AuthResult<TUser>> {
+  async authenticate(context: TContext): Promise<Soap.AuthResult<TUser> | null> {
     try {
       await this.rateLimit?.checkRateLimit(context);
 
@@ -118,7 +117,7 @@ export abstract class CredentialAuthStrategy<
     }
   }
 
-  async login(context: TContext): Promise<AuthResult<TUser>> {
+  async login(context: TContext): Promise<Soap.AuthResult<TUser>> {
     try {
       await this.rateLimit?.checkRateLimit(context);
 
@@ -218,7 +217,7 @@ export abstract class CredentialAuthStrategy<
         tokens: { reset: token },
       });
 
-      this.logger.info(
+      this.logger?.info(
         `Password reset requested for identifier: ${identifier}`
       );
     } catch (error) {
@@ -254,7 +253,7 @@ export abstract class CredentialAuthStrategy<
       );
       await this.onSuccess("password_reset", { identifier });
 
-      this.logger.info(
+      this.logger?.info(
         `Password successfully reset for identifier: ${identifier}`
       );
     } catch (error) {
@@ -281,7 +280,7 @@ export abstract class CredentialAuthStrategy<
       await this.password.updatePassword(identifier, newPassword, options);
       await this.onSuccess("change_password", { identifier });
 
-      this.logger.info(
+      this.logger?.info(
         `Password changed successfully for identifier: ${identifier}`
       );
     } catch (error) {

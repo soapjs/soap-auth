@@ -1,4 +1,4 @@
-import { AuthResult, BaseAuthStrategyConfig } from "../../../src/types";
+import { BaseAuthStrategyConfig } from "../../../src/types";
 import { SessionHandler } from "../../../src/session/session-handler";
 import {
   MissingSessionIdError,
@@ -31,6 +31,8 @@ export class TestBaseAuthStrategy extends BaseAuthStrategy<
   MockContext,
   MockUser
 > {
+  readonly name = "test";
+
   constructor(
     config: BaseAuthStrategyConfig<MockContext, MockUser>,
     session?: SessionHandler,
@@ -39,7 +41,7 @@ export class TestBaseAuthStrategy extends BaseAuthStrategy<
     super(config, session, logger);
   }
 
-  async authenticate(context?: MockContext): Promise<AuthResult<MockUser>> {
+  async authenticate(context?: MockContext): Promise<Soap.AuthResult<MockUser> | null> {
     return { user: null };
   }
 }

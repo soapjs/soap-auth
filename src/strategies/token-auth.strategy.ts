@@ -1,5 +1,5 @@
 import * as Soap from "@soapjs/soap";
-import { AuthResult, TokenAuthStrategyConfig } from "../types";
+import { TokenAuthStrategyConfig } from "../types";
 import { BaseAuthStrategy } from "./base-auth.strategy";
 import {
   MissingTokenError,
@@ -19,8 +19,8 @@ import { TokenExpiredError } from "jsonwebtoken";
  * @template TUser - The type of the authenticated user.
  */
 export abstract class TokenAuthStrategy<
-  TContext = unknown,
-  TUser = unknown
+  TContext = Soap.HttpContext,
+  TUser extends Soap.AuthUser = Soap.AuthUser
 > extends BaseAuthStrategy<TContext, TUser> {
   constructor(
     protected config: TokenAuthStrategyConfig<TContext, TUser>,
@@ -162,7 +162,7 @@ export abstract class TokenAuthStrategy<
    * @param {TContext} context - The authentication context.
    * @returns {Promise<AuthResult<TUser>>} The authentication result containing the user and tokens.
    */
-  async authenticate(context: TContext): Promise<AuthResult<TUser>> {
+  async authenticate(context: TContext): Promise<Soap.AuthResult<TUser> | null> {
     try {
       await this.rateLimit?.checkRateLimit(context);
 
@@ -231,7 +231,7 @@ export abstract class TokenAuthStrategy<
   async refreshTokens(
     context: TContext,
     existingUser?: TUser
-  ): Promise<AuthResult<TUser>> {
+  ): Promise<Soap.AuthResult<TUser>> {
     try {
       if (!this.config.refreshToken) {
         throw new Error("Refresh tokens are not enabled.");
@@ -301,12 +301,10 @@ export abstract class TokenAuthStrategy<
       let refreshToken;
 
       if (this.config.refreshToken) {
-        refreshToken = await this.generateRefreshToken(user, context);
-
-        if (rotate && this.config?.refreshToken?.rotation) {
+        if (rotate && this.config.refreshToken.rotation) {
           const oldRefreshToken = this.extractRefreshToken(context);
           refreshToken = await this.rotateToken(oldRefreshToken, user, context);
-        } else if (this.generateRefreshToken) {
+        } else {
           refreshToken = await this.generateRefreshToken(user, context);
         }
       }

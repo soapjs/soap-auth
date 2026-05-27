@@ -1,5 +1,4 @@
 import * as Soap from "@soapjs/soap";
-import { AuthResult, AuthStrategy } from "../../types";
 import {
   InvalidApiKeyError,
   MissingApiKeyError,
@@ -16,10 +15,11 @@ import { prepareApiKeyConfig } from "./api-key.tools";
  * @template TContext - The type of the authentication context.
  * @template TUser - The type of the authenticated user.
  */
-export class ApiKeyStrategy<TContext = unknown, TUser = unknown>
-  extends BaseAuthStrategy<TContext, TUser>
-  implements AuthStrategy<TContext, TUser>
-{
+export class ApiKeyStrategy<
+  TContext = Soap.HttpContext,
+  TUser extends Soap.AuthUser = Soap.AuthUser
+> extends BaseAuthStrategy<TContext, TUser> {
+  readonly name = "api-key";
   protected apiKeyValidity: {
     sessionDuration: number;
     longTermDuration: number;
@@ -32,7 +32,7 @@ export class ApiKeyStrategy<TContext = unknown, TUser = unknown>
    */
   constructor(
     protected config: ApiKeyStrategyConfig<TContext, TUser>,
-    logger: Soap.Logger
+    logger?: Soap.Logger
   ) {
     super(prepareApiKeyConfig(config), null, logger);
     if (!this.config.extractApiKey || !this.config.retrieveUserByApiKey) {
@@ -59,7 +59,7 @@ export class ApiKeyStrategy<TContext = unknown, TUser = unknown>
         const user = await this.config.retrieveUserByApiKey(apiKey, context);
         return user;
       } catch (error) {
-        this.logger.warn(`Attempt ${attempt + 1} failed: ${error}`);
+        this.logger?.warn(`Attempt ${attempt + 1} failed: ${error}`);
         if (attempt < maxRetries) {
           await new Promise((resolve) => setTimeout(resolve, retryDelay));
         } else {
@@ -87,7 +87,7 @@ export class ApiKeyStrategy<TContext = unknown, TUser = unknown>
    * @throws {MissingApiKeyError} If API key is missing.
    * @throws {InvalidApiKeyError} If authentication fails due to invalid API key.
    */
-  async authenticate(context?: TContext): Promise<AuthResult<TUser>> {
+  async authenticate(context?: TContext): Promise<Soap.AuthResult<TUser> | null> {
     let apiKey: string;
 
     try {
@@ -176,7 +176,7 @@ export class ApiKeyStrategy<TContext = unknown, TUser = unknown>
     try {
       await this.config.trackApiKeyUsage?.(apiKey);
     } catch (error) {
-      this.logger.warn("Failed to track API key usage:", error);
+      this.logger?.warn("Failed to track API key usage:", error);
     }
   }
 }

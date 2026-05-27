@@ -6,3 +6,4 @@ export * from "./password.service";
 export * from "./pkce.service";
 export * from "./rate-limit.service";
 export * from "./role.service";
+export * from "./totp.service";
