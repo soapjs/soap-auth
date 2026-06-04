@@ -186,7 +186,10 @@ export class JwtStrategy<
   }
 
   protected async storeAccessToken(token: string): Promise<void> {
-    if (this.accessTokenConfig.persistence.store) {
+    // `persistence` is optional — null-safe both the wrapper object and the
+    // `store` callback so JWT strategies without a token store can issue
+    // tokens without blowing up.
+    if (this.accessTokenConfig.persistence?.store) {
       await this.accessTokenConfig.persistence.store(
         token,
         null,
@@ -196,7 +199,7 @@ export class JwtStrategy<
   }
 
   protected async storeRefreshToken(token: string): Promise<void> {
-    if (this.refreshTokenConfig.persistence.store) {
+    if (this.refreshTokenConfig?.persistence?.store) {
       await this.refreshTokenConfig.persistence.store(
         token,
         null,
@@ -258,6 +261,11 @@ export class JwtStrategy<
    * @returns {string | undefined} The refresh token, if available.
    */
   protected extractRefreshToken(context: TContext): string | undefined {
+    // `refreshTokenConfig` is optional — strategies configured without refresh
+    // tokens shouldn't crash when the auth flow probes for one.
+    if (!this.refreshTokenConfig) {
+      return undefined;
+    }
     if (this.refreshTokenConfig.extract) {
       return this.refreshTokenConfig.extract(context);
     }
@@ -293,7 +301,7 @@ export class JwtStrategy<
     const refreshToken = token || (await this.extractRefreshToken(context));
 
     if (refreshToken) {
-      await this.refreshTokenConfig.persistence?.remove?.(refreshToken);
+      await this.refreshTokenConfig?.persistence?.remove?.(refreshToken);
 
       if (context) {
         JwtTools.clearDefaultJwtCookie(context);

@@ -105,7 +105,22 @@ describe("LocalStrategy", () => {
   });
 
   describe("fetchUser", () => {
-    it("should fetch user data", async () => {
+    // Regression test: CredentialAuthStrategy.login dispatches
+    //   await this.fetchUser(credentials.identifier)
+    // — i.e. a plain string. Previously the override forwarded
+    // `credentials.identifier`, which on a string is `undefined`, causing
+    // every successful login to fail with UserNotFoundError.
+    it("should fetch user when called with a string identifier", async () => {
+      const mockUser = { id: 1, username: "test" };
+      mockConfig.user.fetchUser.mockResolvedValue(mockUser);
+
+      const user = await (strategy as any).fetchUser("test");
+
+      expect(user).toEqual(mockUser);
+      expect(mockConfig.user.fetchUser).toHaveBeenCalledWith("test");
+    });
+
+    it("should fetch user when called with a credentials object (backwards-compat)", async () => {
       const mockUser = { id: 1, username: "test" };
       mockConfig.user.fetchUser.mockResolvedValue(mockUser);
 
@@ -121,10 +136,7 @@ describe("LocalStrategy", () => {
     it("should return null if user is not found", async () => {
       mockConfig.user.fetchUser.mockResolvedValue(null);
 
-      const user = await (strategy as any).fetchUser({
-        identifier: "unknown",
-        password: "pass123",
-      });
+      const user = await (strategy as any).fetchUser("unknown");
 
       expect(user).toBeNull();
       expect(mockConfig.user.fetchUser).toHaveBeenCalledWith("unknown");

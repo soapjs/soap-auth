@@ -138,4 +138,45 @@ describe("JwtTools", () => {
     const extractedToken = JwtTools.getRefreshToken(context);
     expect(extractedToken).toBe(token);
   });
+
+  describe("prepareAccessTokenConfig / prepareRefreshTokenConfig", () => {
+    // Regression: `verifier` is declared optional on TokenConfig, so passing
+    // just `{ issuer }` must not blow up with "Cannot read properties of
+    // undefined (reading 'options')".
+    it("should default verifier when omitted (access token)", () => {
+      const prepared = JwtTools.prepareAccessTokenConfig({
+        issuer: { secretKey, options: { expiresIn: "1h" } },
+      } as any);
+
+      expect(prepared.verifier).toBeDefined();
+      expect(prepared.verifier!.options).toEqual({
+        algorithms: ["HS256"],
+        expiresIn: "1h",
+      });
+    });
+
+    it("should default verifier when omitted (refresh token)", () => {
+      const prepared = JwtTools.prepareRefreshTokenConfig({
+        issuer: { secretKey, options: { expiresIn: "7d" } },
+      } as any);
+
+      expect(prepared.verifier).toBeDefined();
+      expect(prepared.verifier!.options).toEqual({
+        algorithms: ["HS256"],
+        expiresIn: "7d",
+      });
+    });
+
+    it("should preserve caller-supplied verifier options", () => {
+      const prepared = JwtTools.prepareAccessTokenConfig({
+        issuer: { secretKey, options: { expiresIn: "1h" } },
+        verifier: { options: { algorithms: ["RS256"], clockTolerance: 5 } },
+      } as any);
+
+      expect(prepared.verifier!.options).toMatchObject({
+        algorithms: ["RS256"],
+        clockTolerance: 5,
+      });
+    });
+  });
 });

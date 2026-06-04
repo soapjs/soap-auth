@@ -124,23 +124,33 @@ export class LocalStrategy<
   }
 
   /**
-   * Retrieves the user's profile based on the provided credentials.
+   * Retrieves the user's profile based on the provided identifier.
    *
-   * @param {object} credentials - The user's identifier and password.
+   * The parent {@link CredentialAuthStrategy.login} dispatches this method as
+   * `this.fetchUser(credentials.identifier)` — i.e. with a plain string, not
+   * the full credentials object. Older code passes the credentials object
+   * (e.g. {@link changePassword} below), so accept both shapes for backwards
+   * compatibility.
+   *
+   * @param identifierOrCredentials - The identifier string OR a credentials
+   *   object that exposes `.identifier`.
    * @returns {Promise<TUser | null>} The user object if found, otherwise null.
    */
-  protected async fetchUser(credentials: {
-    identifier: string;
-    password: string;
-  }): Promise<TUser | null> {
-    // Validate credentials object
-    ValidationUtils.required(credentials, "credentials");
-    if (credentials && typeof credentials === "object" && !Array.isArray(credentials)) {
-      ValidationUtils.nonEmptyString(credentials.identifier, "credentials.identifier");
-      ValidationUtils.nonEmptyString(credentials.password, "credentials.password");
-    }
-    
-    return this.config.user.fetchUser(credentials.identifier);
+  protected async fetchUser(
+    identifierOrCredentials:
+      | string
+      | { identifier: string; password?: string }
+  ): Promise<TUser | null> {
+    ValidationUtils.required(identifierOrCredentials, "identifier");
+
+    const identifier =
+      typeof identifierOrCredentials === "string"
+        ? identifierOrCredentials
+        : identifierOrCredentials?.identifier;
+
+    ValidationUtils.nonEmptyString(identifier, "identifier");
+
+    return this.config.user.fetchUser(identifier);
   }
 
   async changePassword(context: TContext): Promise<void> {

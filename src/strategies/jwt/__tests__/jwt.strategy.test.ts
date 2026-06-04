@@ -68,6 +68,28 @@ describe("JWTStrategy", () => {
     expect(result.tokens.accessToken).toEqual("mock-access-token");
   });
 
+  // Regression: when the strategy is configured without a refreshToken block,
+  // `authenticate` used to crash with
+  //   TypeError: Cannot read properties of undefined (reading 'extract')
+  // because `extractRefreshToken` blindly dereferenced `this.refreshTokenConfig`.
+  it("should authenticate without crashing when refreshToken is not configured", async () => {
+    const accessOnlyConfig: TokenAuthStrategyConfig<any, any> = {
+      accessToken: {
+        issuer: { secretKey: "access-secret", options: { expiresIn: "1h" } },
+        verifier: { options: { algorithms: ["HS256"] } },
+      },
+      user: { fetchUser: jest.fn().mockResolvedValue(mockUser) },
+      routes: {},
+    };
+    const accessOnlyStrategy: any = new JwtStrategy(accessOnlyConfig as any, mockLogger);
+    jest
+      .spyOn(accessOnlyStrategy, "verifyAccessToken")
+      .mockResolvedValue(mockUser);
+
+    const result = await accessOnlyStrategy.authenticate(mockContext);
+    expect(result.user).toEqual(mockUser);
+  });
+
   it("should refresh tokens when access token is invalid", async () => {
     const mockAccessToken = "mock-access-token";
     const mockRefreshToken = "mock-refresh-token";

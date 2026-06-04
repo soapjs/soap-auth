@@ -174,6 +174,9 @@ export class JwtTools {
   static prepareAccessTokenConfig = <TContext = any>(
     config: TokenConfig<TContext>
   ): TokenConfig<TContext> => {
+    // `verifier` is optional in TokenConfig — guard against it being absent
+    // so callers can pass just `{ issuer }` and still get sensible defaults.
+    const verifierOptions = config.verifier?.options ?? {};
     return Soap.removeUndefinedProperties<TokenConfig<TContext>>({
       ...config,
       issuer: {
@@ -187,9 +190,9 @@ export class JwtTools {
       verifier: {
         ...config.verifier,
         options: {
-          ...config.verifier.options,
-          algorithms: config.verifier.options.algorithms || ["HS256"],
-          expiresIn: config.verifier.options.expiresIn || "1h",
+          ...verifierOptions,
+          algorithms: (verifierOptions as any).algorithms || ["HS256"],
+          expiresIn: (verifierOptions as any).expiresIn || "1h",
         },
       },
     });
@@ -198,6 +201,7 @@ export class JwtTools {
   static prepareRefreshTokenConfig = <TContext = any>(
     config: TokenConfig<TContext>
   ): TokenConfig<TContext> => {
+    const verifierOptions = config.verifier?.options ?? {};
     return Soap.removeUndefinedProperties<TokenConfig<TContext>>({
       ...config,
       issuer: {
@@ -211,9 +215,9 @@ export class JwtTools {
       verifier: {
         ...config.verifier,
         options: {
-          ...config.verifier.options,
-          algorithms: config.verifier.options.algorithms || ["HS256"],
-          expiresIn: config.verifier.options.expiresIn || "7d",
+          ...verifierOptions,
+          algorithms: (verifierOptions as any).algorithms || ["HS256"],
+          expiresIn: (verifierOptions as any).expiresIn || "7d",
         },
       },
     });

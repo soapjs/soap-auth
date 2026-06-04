@@ -1,6 +1,6 @@
 {
   "name": "@soapjs/soap-auth",
-  "version": "0.3.4",
+  "version": "0.4.4",
   "description": "",
   "homepage": "https://docs.soapjs.com",
   "repository": "https://github.com/soapjs/soap-auth",
@@ -15,20 +15,21 @@
     "prepublish": "npm run clean && tsc --project tsconfig.build.json"
   },
   "devDependencies": {
-    "@soapjs/soap": "file:../soap/soapjs-soap-0.5.26.tgz",
+    "@soapjs/soap": "^0.12.0",
     "@types/jest": "^27.0.3",
     "jest": "^27.4.5",
     "ts-jest": "^27.1.3",
     "typescript": "^4.8.2"
   },
   "peerDependencies": {
-    "@soapjs/soap": ">=0.5.8"
+    "@soapjs/soap": ">=0.12.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   },
   "dependencies": {
-    "axios": "^1.7.9",
-    "bcrypt": "^5.1.1",
+    "bcrypt": "^6.0.0",
     "jsonwebtoken": "^9.0.2",
-    "jwks-rsa": "^3.1.0",
-    "uuid": "^9.0.1"
+    "jwks-rsa": "^3.1.0"
   }
 }
