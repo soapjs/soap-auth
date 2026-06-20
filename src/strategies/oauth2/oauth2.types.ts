@@ -93,3 +93,13 @@ export interface OAuth2StrategyConfig<TContext = unknown, TUser = unknown>
   nonce?: OAuth2NonceConfig;
   jwks?: JwksConfig;
 }
+
+export interface OAuth2ProviderConfig<TContext = unknown, TUser = unknown>
+  extends Omit<
+    OAuth2StrategyConfig<TContext, TUser>,
+    "endpoints" | "grantType" | "routes"
+  > {
+  grantType?: "authorization_code";
+  endpoints?: Partial<OAuth2Endpoints>;
+  routes?: OAuth2StrategyConfig<TContext, TUser>["routes"];
+}

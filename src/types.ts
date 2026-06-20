@@ -3,7 +3,7 @@ import * as Soap from "@soapjs/soap";
 export type AuthResult<TUser extends Soap.AuthUser = Soap.AuthUser> = Soap.AuthResult<TUser>;
 export type AuthStrategy<TUser extends Soap.AuthUser = Soap.AuthUser> = Soap.AuthStrategy<TUser>;
 import { LocalStrategyConfig } from "./strategies/local/local.types";
-import { OAuth2StrategyConfig } from "./strategies/oauth2/oauth2.types";
+import { OAuth2ProviderConfig } from "./strategies/oauth2/oauth2.types";
 import { ApiKeyStrategyConfig } from "./strategies/api-key/api-key.types";
 import { BasicStrategyConfig } from "./strategies/basic/basic.types";
 import { JwtConfig } from "./strategies/jwt/jwt.types";
@@ -435,9 +435,16 @@ export interface SoapHttpAuthConfig<TContext = unknown, TUser extends Soap.AuthU
   /**
    * Configuration for multiple OAuth2 providers.
    * The key is the provider's identifier, and the value is its configuration.
-   * @type {{ [provider: string]: OAuth2StrategyConfig } | undefined}
+   * @type {{ [provider: string]: OAuth2ProviderConfig } | undefined}
    */
-  oauth2?: { [provider: string]: OAuth2StrategyConfig<TContext, TUser> };
+  oauth2?: { [provider: string]: OAuth2ProviderConfig<TContext, TUser> };
+
+  /**
+   * Configuration for hybrid OAuth2 providers that try JWT/session first and
+   * then fall back to OAuth2.
+   * @type {{ [provider: string]: OAuth2ProviderConfig } | undefined}
+   */
+  hybridOAuth2?: { [provider: string]: OAuth2ProviderConfig<TContext, TUser> };
 
   /**
    * Configuration for API key based strategy.

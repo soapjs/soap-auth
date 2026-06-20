@@ -84,7 +84,7 @@ export abstract class HybridOAuth2Strategy<
       if (!accessToken) {
         const code = this.extractAuthorizationCode(context);
         if (!code) {
-          this.login(context);
+          await this.login(context);
           throw new MissingAuthorizationCodeError();
         }
 

@@ -1,6 +1,8 @@
 import { GoogleStrategy } from "../google.strategy";
 import { GitHubStrategy } from "../github.strategy";
 import { FacebookStrategy } from "../facebook.strategy";
+import { ConfigurableOAuth2Strategy } from "../configurable-oauth2.strategy";
+import { ConfigurableHybridOAuth2Strategy } from "../configurable-hybrid-oauth2.strategy";
 
 const mockFetch = jest.fn();
 (global as any).fetch = mockFetch;
@@ -9,6 +11,21 @@ const baseConfig = {
   clientId: "client-id",
   clientSecret: "client-secret",
   redirectUri: "https://example.com/callback",
+};
+
+const genericConfig = {
+  ...baseConfig,
+  name: "auth0",
+  grantType: "authorization_code",
+  endpoints: {
+    authorizationUrl: "https://tenant.example/authorize",
+    tokenUrl: "https://tenant.example/oauth/token",
+    userInfoUrl: "https://tenant.example/userinfo",
+  },
+  routes: {
+    login: { path: "/auth/auth0", method: "GET" },
+    callback: { path: "/auth/auth0/callback", method: "GET" },
+  },
 };
 
 function makeMockCtx() {
@@ -238,5 +255,54 @@ describe("HttpOAuth2Strategy — HTTP plumbing", () => {
     (strategy as any).redirectUser(ctx, "https://accounts.google.com/auth");
     expect(ctx.res.setHeader).toHaveBeenCalledWith("Location", "https://accounts.google.com/auth");
     expect(ctx.res.status).toHaveBeenCalledWith(302);
+  });
+});
+
+describe("Configurable OAuth2 strategies", () => {
+  afterEach(() => jest.clearAllMocks());
+
+  it("maps a generic provider profile without provider SDKs", async () => {
+    const strategy = new ConfigurableOAuth2Strategy(genericConfig as any);
+    mockFetchOk({
+      sub: "auth0|123",
+      email: "user@example.com",
+      preferred_username: "user",
+      picture: "https://example.com/avatar.png",
+    });
+
+    const user = await (strategy as any).fetchUser("access-token");
+
+    expect(strategy.name).toBe("auth0");
+    expect(user).toMatchObject({
+      id: "auth0|123",
+      email: "user@example.com",
+      username: "user",
+      picture: "https://example.com/avatar.png",
+    });
+  });
+
+  it("uses validateUser mapper for generic providers", async () => {
+    const validateUser = jest.fn(async (profile: any) => ({
+      id: profile.custom_id,
+      email: profile.mail,
+    }));
+    const strategy = new ConfigurableOAuth2Strategy({
+      ...genericConfig,
+      user: { fetchUser: jest.fn(), validateUser },
+    } as any);
+    mockFetchOk({ custom_id: "u-1", mail: "u@example.com" });
+
+    const user = await (strategy as any).fetchUser("access-token");
+
+    expect(validateUser).toHaveBeenCalledWith({
+      custom_id: "u-1",
+      mail: "u@example.com",
+    });
+    expect(user).toMatchObject({ id: "u-1", email: "u@example.com" });
+  });
+
+  it("exposes a configurable hybrid strategy name", () => {
+    const strategy = new ConfigurableHybridOAuth2Strategy(genericConfig as any);
+    expect(strategy.name).toBe("auth0");
   });
 });

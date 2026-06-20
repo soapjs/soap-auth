@@ -126,6 +126,91 @@ describe("SoapAuth.create()", () => {
     expect(auth.hasStrategy("local", "http")).toBe(true);
   });
 
+  test("registers built-in OAuth2 providers from config", async () => {
+    const auth = await SoapAuth.create({
+      http: {
+        oauth2: {
+          google: {
+            clientId: "client-id",
+            clientSecret: "client-secret",
+            redirectUri: "https://example.com/auth/google/callback",
+          },
+        },
+      },
+      logger: mockLogger,
+    });
+    expect(auth.hasStrategy("google", "http")).toBe(true);
+  });
+
+  test("registers configurable OAuth2 providers from config", async () => {
+    const auth = await SoapAuth.create({
+      http: {
+        oauth2: {
+          auth0: {
+            clientId: "client-id",
+            clientSecret: "client-secret",
+            redirectUri: "https://example.com/auth/auth0/callback",
+            endpoints: {
+              authorizationUrl: "https://tenant.auth0.com/authorize",
+              tokenUrl: "https://tenant.auth0.com/oauth/token",
+              userInfoUrl: "https://tenant.auth0.com/userinfo",
+            },
+            user: {
+              fetchUser: jest.fn(async () => null),
+              validateUser: jest.fn(async (profile: any) => ({
+                id: profile.sub,
+                email: profile.email,
+              })),
+            },
+          },
+        },
+      },
+      logger: mockLogger,
+    });
+    expect(auth.hasStrategy("auth0", "http")).toBe(true);
+  });
+
+  test("registers configurable hybrid OAuth2 providers from config", async () => {
+    const auth = await SoapAuth.create({
+      http: {
+        jwt: jwtConfig,
+        hybridOAuth2: {
+          enterprise: {
+            clientId: "client-id",
+            clientSecret: "client-secret",
+            redirectUri: "https://example.com/auth/enterprise/callback",
+            endpoints: {
+              authorizationUrl: "https://idp.example.com/authorize",
+              tokenUrl: "https://idp.example.com/token",
+              userInfoUrl: "https://idp.example.com/userinfo",
+            },
+          },
+        },
+      },
+      logger: mockLogger,
+    });
+    expect(auth.hasStrategy("enterprise", "http")).toBe(true);
+  });
+
+  test("rejects incomplete configurable OAuth2 provider configs", async () => {
+    await expect(
+      SoapAuth.create({
+        http: {
+          oauth2: {
+            customProvider: {
+              clientId: "client-id",
+              clientSecret: "client-secret",
+              redirectUri: "https://example.com/callback",
+            },
+          },
+        },
+        logger: mockLogger,
+      } as any)
+    ).rejects.toThrow(
+      'OAuth2 provider "customProvider" requires endpoints.authorizationUrl and endpoints.tokenUrl'
+    );
+  });
+
   test("registers custom strategies from config", async () => {
     const customStrategy: any = { name: "custom", authenticate: jest.fn() };
     const auth = await SoapAuth.create({

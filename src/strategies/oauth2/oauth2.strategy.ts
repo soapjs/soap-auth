@@ -398,7 +398,7 @@ export abstract class OAuth2Strategy<
 
     if (this.pkce) {
       const codeVerifier = await this.pkce.generateCodeVerifier(context);
-      const codeChallenge = this.pkce.generateCodeChallenge(
+      const codeChallenge = await this.pkce.generateCodeChallenge(
         codeVerifier,
         context
       );
@@ -425,7 +425,7 @@ export abstract class OAuth2Strategy<
       grant_type: "authorization_code",
       client_id: this.config.clientId,
       code,
-      redirectUri: this.config.redirectUri,
+      redirect_uri: this.config.redirectUri,
     };
 
     if (this.pkce) {

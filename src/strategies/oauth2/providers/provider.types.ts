@@ -17,3 +17,14 @@ export interface SocialProviderConfig<TUser extends Soap.AuthUser = Soap.AuthUse
   endpoints?: Partial<OAuth2Endpoints>;
   routes?: OAuth2StrategyConfig<Soap.HttpContext, TUser>["routes"];
 }
+
+/**
+ * Config for arbitrary OAuth2/OIDC providers that should work without writing a
+ * custom strategy class. Provide endpoints and a `user.validateUser` mapper when
+ * the provider profile shape does not match the default AuthUser fields.
+ */
+export interface ConfigurableOAuth2StrategyConfig<
+  TUser extends Soap.AuthUser = Soap.AuthUser
+> extends OAuth2StrategyConfig<Soap.HttpContext, TUser> {
+  name: string;
+}

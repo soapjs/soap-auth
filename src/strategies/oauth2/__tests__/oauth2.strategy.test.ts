@@ -172,6 +172,31 @@ describe("OAuth2Strategy — buildAuthorizationUrl", () => {
     const url = await (strategy as any).buildAuthorizationUrl(makeCtx(), undefined, "my-nonce");
     expect(url).toContain("nonce=my-nonce");
   });
+
+  it("awaits and embeds PKCE code challenge", async () => {
+    const config = {
+      ...baseConfig,
+      pkce: {
+        verifier: {
+          generate: jest.fn(() => "verifier-123"),
+          embed: jest.fn(),
+          extract: jest.fn(),
+        },
+        challenge: {
+          generate: jest.fn(() => "challenge-456"),
+          embed: jest.fn(),
+          extract: jest.fn(),
+        },
+      },
+    };
+    const strategy = new TestOAuth2Strategy(config);
+
+    const url = await (strategy as any).buildAuthorizationUrl(makeCtx());
+
+    expect(url).toContain("code_challenge=challenge-456");
+    expect(url).not.toContain("[object+Promise]");
+    expect(url).toContain("code_challenge_method=S256");
+  });
 });
 
 describe("OAuth2Strategy — verifyAuthorizationCode", () => {
@@ -210,6 +235,9 @@ describe("OAuth2Strategy — exchangeCodeForToken", () => {
       "https://provider.example/token",
       expect.objectContaining({ method: "POST" })
     );
+    const [, request] = mockFetch.mock.calls[0];
+    expect(request.body).toContain("redirect_uri=https%3A%2F%2Fexample.com%2Fcallback");
+    expect(request.body).not.toContain("redirectUri=");
   });
 
   it("throws when token endpoint returns non-ok status", async () => {

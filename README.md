@@ -1,174 +1,307 @@
-# SoapAuth - Modular Authentication Solution
+# SoapAuth
 
-SoapAuth is a flexible library for handling authentication and identity management. It allows you to easily implement various authentication strategies such as JWT, OAuth2, Basic Auth, Local Auth, API Key, and more. As part of the **@soapjs** ecosystem, it can be easily extended with additional components like **soap**, **soap-express**, and **soap-cli**.
+Authentication strategies, session handling, MFA, and token helpers for the SoapJS ecosystem.
+
+`@soapjs/soap-auth` provides composable authentication primitives for HTTP and socket applications. It includes JWT, local credentials, basic auth, API key auth, built-in OAuth2 social providers, sessions, roles, rate limiting, account lockout, password helpers, MFA/TOTP, PKCE, and JWKS verification.
+
+The package does not depend on Passport or provider SDKs. Built-in and configurable OAuth2 strategies use platform `fetch` plus user-provided mapping callbacks, so applications can start quickly and still replace any part of the auth flow with their own implementation.
 
 ## Installation
+
 ```sh
-npm install @soapjs/soap-auth
+npm install @soapjs/soap-auth @soapjs/soap
 ```
 
-## Key Features
-- **Supports multiple authentication strategies** (JWT, OAuth2, API Key, Basic, Local, Hybrid OAuth2).
-- **Works with both HTTP and WebSocket protocols.**
-- **Manages sessions, MFA, roles, account locks, and rate limiting.**
-- **Easy configuration and extendability.**
-- **Integration with frameworks like Express, NestJS, etc.**
+## Requirements
 
----
+- Node.js 24.17.0 or newer
+- `@soapjs/soap` 0.12 or newer
 
-## Basic Usage
-```typescript
-import { SoapAuth, JwtStrategy } from "@soapjs/soap-auth";
+## Quick Start
 
-const auth = new SoapAuth();
-auth.addStrategy(new JwtStrategy({ secret: "super-secret-key" }), "jwt", "http");
-// ...
-const result = await auth.getHttpStrategy<JwtStrategy>("jwt").authenticate(request);
-console.log(result.user);
+```ts
+import { createJwtAuthConfig, SoapAuth } from "@soapjs/soap-auth";
+
+const auth = await SoapAuth.create({
+  http: {
+    jwt: createJwtAuthConfig({
+      accessSecret: process.env.JWT_ACCESS_SECRET!,
+      refreshSecret: process.env.JWT_REFRESH_SECRET!,
+      user: {
+        fetchUser: async (payload) => users.findById((payload as any).id),
+      },
+    }),
+  },
+});
+
+const result = await auth.getHttpStrategy("jwt").authenticate(context);
 ```
 
----
+## Recipes
 
-## Supported Authentication Strategies
+Recipes are framework-neutral config helpers. They return plain SoapAuth config objects and do not import Express, Passport, provider SDKs, or any other adapter library.
 
-SoapAuth supports multiple authentication strategies. Below is a description and example configuration for each.
-
-### **JWT Strategy** *(Token-based authentication)*
-```typescript
-import { JwtStrategy } from "@soapjs/soap-auth";
-
-auth.addStrategy(new JwtStrategy({
-  secret: "your-secret-key",
-  accessToken: {
-    expiresIn: "1h",
-  },
-  refreshToken: {
-    expiresIn: "7d",
-  },
-}), "jwt", "http");
+```ts
+import {
+  createApiKeyAuthConfig,
+  createHybridOAuth2ProviderConfig,
+  createJwtAuthConfig,
+  createLocalAuthConfig,
+  createOAuth2ProviderConfig,
+  oauth2ProviderEndpoints,
+} from "@soapjs/soap-auth";
 ```
 
-### **OAuth2 Strategy** *(OAuth 2.0 authentication)*
-```typescript
-import { OAuth2Strategy } from "@soapjs/soap-auth";
+Available recipes:
 
-auth.addStrategy(new OAuth2Strategy({
-  clientId: "your-client-id",
-  clientSecret: "your-client-secret",
-  redirectUri: "https://your-app.com/callback",
-  endpoints: {
-    authorizationUrl: "https://auth.server.com/auth",
-    tokenUrl: "https://auth.server.com/token",
+- `createJwtAuthConfig(...)`
+- `createLocalAuthConfig(...)`
+- `createBasicAuthConfig(...)`
+- `createApiKeyAuthConfig(...)`
+- `createOAuth2ProviderConfig(...)`
+- `createHybridOAuth2ProviderConfig(...)`
+- `oauth2ProviderEndpoints.auth0(...)`
+- `oauth2ProviderEndpoints.keycloak(...)`
+- `oauth2ProviderEndpoints.discord()`
+- `oauth2ProviderEndpoints.google()`
+- `oauth2ProviderEndpoints.github()`
+- `oauth2ProviderEndpoints.facebook()`
+
+Recipes are also available from `@soapjs/soap-auth/recipes`.
+
+## Factory Configuration
+
+`SoapAuth.create()` registers built-in strategies from config:
+
+- `http.jwt` as `jwt`
+- `http.local` as `local`
+- `http.basic` as `basic`
+- `http.apiKey` as `api-key`
+- `http.oauth2.google` as `google`
+- `http.oauth2.github` as `github`
+- `http.oauth2.facebook` as `facebook`
+- any other `http.oauth2.<name>` with OAuth2 endpoints as `<name>`
+- any `http.hybridOAuth2.<name>` with OAuth2 endpoints as `<name>`
+- `socket.jwt` as `jwt`
+- `socket.apiKey` as `api-key`
+
+Custom strategies can be registered through `http.custom`, `socket.custom`, or manually with `addStrategy(strategy, name, category)`.
+
+## Local Credentials
+
+```ts
+import { createLocalAuthConfig } from "@soapjs/soap-auth";
+
+const auth = await SoapAuth.create({
+  http: {
+    local: createLocalAuthConfig({
+      credentials: {
+        extractCredentials: (ctx: any) => ({
+          identifier: ctx.body.email,
+          password: ctx.body.password,
+        }),
+        verifyCredentials: async (identifier, password) =>
+          users.verifyPassword(identifier, password),
+      },
+      user: {
+        fetchUser: async (identifier) => users.findByEmail(String(identifier)),
+      },
+      basePath: "/auth",
+    }),
   },
-}), "oauth2", "http");
+});
 ```
 
-### **API Key Strategy** *(Key-based authentication)*
-```typescript
-import { ApiKeyStrategy } from "@soapjs/soap-auth";
+## API Key
 
-auth.addStrategy(new ApiKeyStrategy({
-  extractApiKey: (ctx) => ctx.headers["x-api-key"],
-  retrieveUserByApiKey: async (key) => {
-    return mockDatabase.findUserByApiKey(key);
+```ts
+import { createApiKeyAuthConfig } from "@soapjs/soap-auth";
+
+const auth = await SoapAuth.create({
+  http: {
+    apiKey: createApiKeyAuthConfig({
+      keyType: "long-term",
+      extractApiKey: (ctx: any) => ctx.headers["x-api-key"] ?? null,
+      retrieveUserByApiKey: async (apiKey) => apiKeys.findUser(apiKey),
+      isApiKeyExpired: async (apiKey) => apiKeys.isExpired(apiKey),
+      trackApiKeyUsage: async (apiKey) => apiKeys.touch(apiKey),
+    }),
   },
-}), "apikey", "http");
+});
 ```
 
-### **Basic Auth Strategy** *(Username & Password authentication)*
-```typescript
-import { BasicStrategy } from "@soapjs/soap-auth";
+## Sessions
 
-auth.addStrategy(new BasicStrategy({
-  extractCredentials: (ctx) => {
-    return { identifier: ctx.body.username, password: ctx.body.password };
+```ts
+import { MemorySessionStore, SoapAuth } from "@soapjs/soap-auth";
+
+const auth = await SoapAuth.create({
+  session: {
+    secret: process.env.SESSION_SECRET!,
+    store: new MemorySessionStore(),
+    getSessionId: (ctx: any) =>
+      ctx.cookies?.SESSIONID ?? ctx.headers?.["x-session-id"] ?? null,
   },
-  verifyCredentials: async (id, pass) => {
-    return mockDatabase.verifyUser(id, pass);
+  http: {
+    local: localConfig,
   },
-}), "basic", "http");
+});
 ```
 
-### **Local Strategy** *(Custom authentication logic)*
-```typescript
-import { LocalStrategy } from "@soapjs/soap-auth";
+`MemorySessionStore` is useful for tests and local development. Production applications should provide a durable `SessionStore` backed by a database, Redis, or another shared storage system.
 
-auth.addStrategy(new LocalStrategy({
-  extractCredentials: (ctx) => ({ identifier: ctx.query.email, password: ctx.query.pass }),
-  verifyCredentials: async (id, pass) => {
-    return mockDatabase.verifyUser(id, pass);
-  },
-}), "local", "http");
-```
+## OAuth2 Providers
 
-### **Hybrid OAuth2 Strategy** *(Combination of multiple authentication methods)*
-```typescript
-import { HybridOAuth2Strategy } from "@soapjs/soap-auth";
-
-auth.addStrategy(new HybridOAuth2Strategy({
-  clientId: "your-client-id",
-  clientSecret: "your-client-secret",
-  oauth2: {
-    endpoints: {
-      authorizationUrl: "https://oauth.provider.com/auth",
-      tokenUrl: "https://oauth.provider.com/token",
+```ts
+const auth = await SoapAuth.create({
+  http: {
+    oauth2: {
+      google: {
+        clientId: process.env.GOOGLE_CLIENT_ID!,
+        clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+        redirectUri: "https://example.com/auth/google/callback",
+      },
+      github: {
+        clientId: process.env.GITHUB_CLIENT_ID!,
+        clientSecret: process.env.GITHUB_CLIENT_SECRET!,
+        redirectUri: "https://example.com/auth/github/callback",
+      },
     },
   },
-}), "hybrid-oauth2", "http");
+});
 ```
 
----
+Providers with standard OAuth2/OIDC endpoints can use configurable OAuth2. Providers with unusual token exchange, user lookup, or redirect requirements can be implemented as a subclass of `OAuth2Strategy` or `HttpOAuth2Strategy` and registered through `http.custom`.
 
-## Configuration & Extensions
-### Role Management
-```typescript
-role: {
-  authorizeByRoles: async (user, roles) => roles.includes(user.role),
-  roles: ["admin", "user"]
-}
+## Configurable OAuth2 Providers
+
+Most OAuth2/OIDC providers do not need a custom class. Provide the endpoints and a profile mapper:
+
+```ts
+import { createOAuth2ProviderConfig } from "@soapjs/soap-auth";
+
+const auth = await SoapAuth.create({
+  http: {
+    oauth2: {
+      auth0: createOAuth2ProviderConfig({
+        provider: "auth0",
+        clientId: process.env.AUTH0_CLIENT_ID!,
+        clientSecret: process.env.AUTH0_CLIENT_SECRET!,
+        redirectUri: "https://example.com/auth/auth0/callback",
+        presetOptions: { domain: "tenant.auth0.com" },
+        user: {
+          fetchUser: async () => null,
+          validateUser: async (profile: any) => ({
+            id: profile.sub,
+            email: profile.email,
+            username: profile.nickname ?? profile.name,
+            picture: profile.picture,
+          }),
+        },
+      }),
+    },
+  },
+});
 ```
-### Multi-Factor Authentication (MFA)
-```typescript
-mfa: {
-  isMfaRequired: (user) => user.requiresMfa,
-  validateMfaCode: async (user, code) => mockDatabase.checkMfaCode(user, code),
-}
+
+For providers without a `userinfo` endpoint, implement `user.fetchUser(accessToken)` and return your application user directly.
+
+## Configurable Hybrid OAuth2
+
+Hybrid OAuth2 tries existing JWT/session auth first, then falls back to OAuth2. This is useful when browser users log in through OAuth2 but API clients can keep using JWT.
+
+```ts
+import { createHybridOAuth2ProviderConfig } from "@soapjs/soap-auth";
+
+const auth = await SoapAuth.create({
+  session: sessionConfig,
+  http: {
+    jwt: jwtConfig,
+    hybridOAuth2: {
+      enterprise: createHybridOAuth2ProviderConfig({
+        provider: "enterprise",
+        clientId: process.env.IDP_CLIENT_ID!,
+        clientSecret: process.env.IDP_CLIENT_SECRET!,
+        redirectUri: "https://example.com/auth/enterprise/callback",
+        endpoints: {
+          authorizationUrl: "https://idp.example.com/authorize",
+          tokenUrl: "https://idp.example.com/token",
+          userInfoUrl: "https://idp.example.com/userinfo",
+        },
+        user: {
+          fetchUser: async () => null,
+          validateUser: async (profile: any) => ({
+            id: profile.sub,
+            email: profile.email,
+          }),
+        },
+      }),
+    },
+  },
+});
 ```
-### Account Locking after Failed Logins
-```typescript
-lock: {
-  isAccountLocked: async (account) => mockDatabase.isLocked(account),
-  lockAccount: async (account) => mockDatabase.lock(account),
-}
+
+## Custom Strategies
+
+When the built-in config is not enough, implement `AuthStrategy` directly:
+
+```ts
+const auth = await SoapAuth.create({
+  http: {
+    custom: {
+      internal: {
+        async authenticate(ctx: any) {
+          const user = await internalAuth.verify(ctx.headers.authorization);
+          return user ? { user } : null;
+        },
+      },
+    },
+  },
+});
 ```
-### Rate Limiting
-```typescript
-rateLimit: {
-  checkRateLimit: async (ctx) => false, // No limits
-}
+
+No external strategy package is required; custom strategies only need an `authenticate(context)` method.
+
+## MFA, Roles, Rate Limits, and Lockout
+
+Shared controls can be attached to credential strategies:
+
+```ts
+const localConfig = {
+  credentials,
+  user,
+  routes,
+  mfa: {
+    isMfaRequired: (user: any) => user.mfaEnabled,
+    extractMfaCode: (ctx: any) => ctx.body.mfaCode,
+    validateMfaCode: async (user: any, code: string) =>
+      mfa.verify(user.id, code),
+  },
+  role: {
+    roles: ["admin"],
+    authorizeByRoles: async (user: any, roles: string[]) =>
+      roles.includes(user.role),
+  },
+  rateLimit: {
+    checkRateLimit: async (ctx: any) => rateLimiter.isLimited(ctx.ip),
+    incrementRequestCount: async (ctx: any) => rateLimiter.increment(ctx.ip),
+  },
+};
 ```
 
----
+## Release Checks
 
-## FAQ
-**How to report an issue?**  
-Open an issue on GitHub.  
+Before publishing:
 
-**How to extend `soap-auth` with custom strategies?**  
-You can create your own class extending `BaseAuthStrategy` and implementing `authenticate()`.  
+```sh
+npm run test:unit
+npm run build
+npm pack --dry-run
+npm audit --omit=dev
+```
 
----
-## Issues
-If you encounter any issues, please feel free to report them [here](https://github.com/soapjs/soap/issues/new/choose).
+The package publishes compiled CommonJS output from `build/` and TypeScript declarations.
 
-## Contact
-For any questions, collaboration interests, or support needs, you can contact us through the following:
-
-- Official:
-  - Website: http://docs.soapjs.com
-- Radoslaw Kamysz:
-  - Email: [radoslaw.kamysz@gmail.com](mailto:radoslaw.kamysz@gmail.com)
-  - Warpcast: [@k4mr4ad](https://warpcast.com/k4mr4ad)
-  - Twitter: [@radoslawkamysz](https://x.com/radoslawkamysz)
 ## License
-SoapAuth is licensed under the MIT License.
+
+MIT

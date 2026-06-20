@@ -6,6 +6,13 @@ import { JwtStrategy } from "./strategies/jwt/jwt.strategy";
 import { LocalStrategy } from "./strategies/local/local.strategy";
 import { BasicStrategy } from "./strategies/basic/basic.strategy";
 import { ApiKeyStrategy } from "./strategies/api-key/api-key.strategy";
+import {
+  ConfigurableHybridOAuth2Strategy,
+  ConfigurableOAuth2Strategy,
+  FacebookStrategy,
+  GitHubStrategy,
+  GoogleStrategy,
+} from "./strategies/oauth2/providers";
 
 /**
  * Core class for soap-auth that manages and initializes various authentication strategies.
@@ -330,9 +337,8 @@ export class SoapAuth {
   /**
    * Factory method — builds a fully initialized SoapAuth instance from config.
    *
-   * Instantiates built-in strategies (local, basic, api-key, jwt) and registers
-   * any user-provided custom strategies. OAuth2 strategies must be registered
-   * manually via `addStrategy()` because they require a concrete subclass.
+   * Instantiates built-in strategies (local, basic, api-key, jwt, known OAuth2
+   * providers) and registers any user-provided custom strategies.
    *
    * @param config - Full SoapAuth configuration.
    * @returns Initialized SoapAuth instance.
@@ -377,6 +383,127 @@ export class SoapAuth {
 
       if (sharedJwt) {
         auth.addStrategy(sharedJwt, "jwt", "http");
+      }
+
+      if (config.http.oauth2) {
+        for (const [provider, providerConfig] of Object.entries(
+          config.http.oauth2
+        )) {
+          switch (provider) {
+            case "google":
+              auth.addStrategy(
+                new GoogleStrategy(
+                  providerConfig as any,
+                  sessionHandler,
+                  sharedJwt,
+                  logger
+                ),
+                "google",
+                "http"
+              );
+              break;
+            case "github":
+              auth.addStrategy(
+                new GitHubStrategy(
+                  providerConfig as any,
+                  sessionHandler,
+                  sharedJwt,
+                  logger
+                ),
+                "github",
+                "http"
+              );
+              break;
+            case "facebook":
+              auth.addStrategy(
+                new FacebookStrategy(
+                  providerConfig as any,
+                  sessionHandler,
+                  sharedJwt,
+                  logger
+                ),
+                "facebook",
+                "http"
+              );
+              break;
+            default:
+              if (
+                providerConfig.endpoints?.authorizationUrl &&
+                providerConfig.endpoints?.tokenUrl
+              ) {
+                auth.addStrategy(
+                  new ConfigurableOAuth2Strategy(
+                    {
+                      ...providerConfig,
+                      name: provider,
+                      grantType: providerConfig.grantType ?? "authorization_code",
+                      routes: {
+                        login: {
+                          path: `/auth/${provider}`,
+                          method: "GET",
+                        },
+                        callback: {
+                          path: `/auth/${provider}/callback`,
+                          method: "GET",
+                        },
+                        ...providerConfig.routes,
+                      },
+                    } as any,
+                    sessionHandler,
+                    sharedJwt,
+                    logger
+                  ),
+                  provider,
+                  "http"
+                );
+                break;
+              }
+              throw new Error(
+                `OAuth2 provider "${provider}" requires endpoints.authorizationUrl and endpoints.tokenUrl, or a custom strategy via http.custom.`
+              );
+          }
+        }
+      }
+
+      if (config.http.hybridOAuth2) {
+        for (const [provider, providerConfig] of Object.entries(
+          config.http.hybridOAuth2
+        )) {
+          if (
+            !providerConfig.endpoints?.authorizationUrl ||
+            !providerConfig.endpoints?.tokenUrl
+          ) {
+            throw new Error(
+              `Hybrid OAuth2 provider "${provider}" requires endpoints.authorizationUrl and endpoints.tokenUrl, or a custom strategy via http.custom.`
+            );
+          }
+
+          auth.addStrategy(
+            new ConfigurableHybridOAuth2Strategy(
+              {
+                ...providerConfig,
+                name: provider,
+                grantType: providerConfig.grantType ?? "authorization_code",
+                routes: {
+                  login: {
+                    path: `/auth/${provider}`,
+                    method: "GET",
+                  },
+                  callback: {
+                    path: `/auth/${provider}/callback`,
+                    method: "GET",
+                  },
+                  ...providerConfig.routes,
+                },
+              } as any,
+              sessionHandler,
+              sharedJwt,
+              logger
+            ),
+            provider,
+            "http"
+          );
+        }
       }
 
       if (config.http.custom) {

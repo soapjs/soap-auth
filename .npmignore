@@ -1,9 +1,13 @@
 .github/
+.claude/
 src/
 node_modules/
 test/
 tests/
 coverage/
+build/**/__tests__/
+build/**/*.test.js
+build/**/*.test.d.ts
 .eslintignore
 .eslintrc.js
 tsconfig.build.json
