@@ -293,8 +293,8 @@ describe("TokenAuthStrategy", () => {
 
       const result = await strategy.refreshTokens(context);
 
-      expect(storeAccessSpy).toHaveBeenCalledWith("newAccessToken");
-      expect(storeRefreshSpy).toHaveBeenCalledWith("newRefreshToken");
+      expect(storeAccessSpy).toHaveBeenCalledWith("newAccessToken", context);
+      expect(storeRefreshSpy).toHaveBeenCalledWith("newRefreshToken", context);
       expect(result).toEqual({
         user: { id: "testUserId", name: "Test User" },
         tokens: {

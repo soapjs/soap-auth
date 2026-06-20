@@ -4,15 +4,15 @@ import { PKCEService } from "../pkce.service";
 class InMemoryPKCEPersistence {
   private storeMap = new Map<string, { expiration?: number }>();
 
-  async store(key: string, meta?: any) {
+  async store(key: string, _context?: any, meta?: any) {
     this.storeMap.set(key, meta || {});
   }
 
-  async read(verifierOrChallenge: string) {
+  async read(_context: any, verifierOrChallenge: string) {
     return this.storeMap.get(verifierOrChallenge);
   }
 
-  async remove(key: string) {
+  async remove(_context: any, key: string) {
     this.storeMap.delete(key);
   }
 }

@@ -42,8 +42,9 @@ export class PKCEService<TContext> {
     const expirationTime =
       Date.now() + (this.config.verifier.expiresIn ?? 300) * 1000;
 
-    await this.config.verifier.persistence?.store(cv, {
+    await this.config.verifier.persistence?.store(cv, context, {
       expiration: expirationTime,
+      key: "code_verifier",
     });
 
     return cv;
@@ -80,8 +81,9 @@ export class PKCEService<TContext> {
     const expirationTime =
       Date.now() + (this.config.challenge.expiresIn ?? 300) * 1000;
 
-    await this.config.challenge.persistence?.store?.(challenge, {
+    await this.config.challenge.persistence?.store?.(challenge, context, {
       expiration: expirationTime,
+      key: "code_challenge",
     });
 
     return challenge;
@@ -108,6 +110,7 @@ export class PKCEService<TContext> {
     if (!codeVerifier) return true;
 
     const stored = await this.config.verifier?.persistence?.read?.(
+      context,
       codeVerifier
     );
 
@@ -126,7 +129,10 @@ export class PKCEService<TContext> {
     const challenge = this.extractCodeChallenge(context);
     if (!challenge) return true;
 
-    const stored = await this.config.challenge?.persistence?.read?.(challenge);
+    const stored = await this.config.challenge?.persistence?.read?.(
+      context,
+      challenge
+    );
     if (!stored || !stored.expiration) return true;
 
     return Date.now() > stored.expiration;
@@ -140,7 +146,7 @@ export class PKCEService<TContext> {
   async clearCodeVerifier(context: TContext): Promise<void> {
     const cv = this.config.verifier.extract(context);
     if (cv) {
-      await this.config.verifier.persistence?.remove?.(cv);
+      await this.config.verifier.persistence?.remove?.(context, cv);
       this.config.verifier.embed(context, "");
     }
   }
@@ -153,7 +159,7 @@ export class PKCEService<TContext> {
   async clearCodeChallenge(context: TContext): Promise<void> {
     const challenge = this.config.challenge.extract(context);
     if (challenge) {
-      await this.config.challenge.persistence?.remove?.(challenge);
+      await this.config.challenge.persistence?.remove?.(context, challenge);
       this.config.challenge.embed(context, "");
     }
   }

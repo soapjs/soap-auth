@@ -97,7 +97,7 @@ export abstract class HybridOAuth2Strategy<
       }
 
       const user = idToken
-        ? await this.verifyIdToken(idToken)
+        ? await this.verifyIdToken(idToken, context)
         : await this.fetchUser(accessToken);
 
       if (!user) throw new UserNotFoundError();

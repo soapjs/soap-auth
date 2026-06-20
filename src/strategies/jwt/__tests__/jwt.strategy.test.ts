@@ -181,9 +181,13 @@ describe("JWTStrategy", () => {
     expect(tokens).toHaveProperty("accessToken", "new-access-token");
     expect(tokens).toHaveProperty("refreshToken", "new-refresh-token");
 
-    expect(strategy.storeAccessToken).toHaveBeenCalledWith("new-access-token");
+    expect(strategy.storeAccessToken).toHaveBeenCalledWith(
+      "new-access-token",
+      mockContext
+    );
     expect(strategy.storeRefreshToken).toHaveBeenCalledWith(
-      "new-refresh-token"
+      "new-refresh-token",
+      mockContext
     );
   });
 

@@ -1,7 +1,10 @@
 import * as Soap from "@soapjs/soap";
 
 export type AuthResult<TUser extends Soap.AuthUser = Soap.AuthUser> = Soap.AuthResult<TUser>;
-export type AuthStrategy<TUser extends Soap.AuthUser = Soap.AuthUser> = Soap.AuthStrategy<TUser>;
+export type AuthStrategy<
+  TUser extends Soap.AuthUser = Soap.AuthUser,
+  TContext extends Soap.HttpContext = Soap.HttpContext
+> = Soap.AuthStrategy<TUser, TContext>;
 import { LocalStrategyConfig } from "./strategies/local/local.types";
 import { OAuth2ProviderConfig } from "./strategies/oauth2/oauth2.types";
 import { ApiKeyStrategyConfig } from "./strategies/api-key/api-key.types";
@@ -266,14 +269,14 @@ export interface MfaConfig<TUser = unknown, TContext = unknown> {
 export type PasswordType = "default" | "one-time" | "temporary";
 
 export type NewPasswordOptions = {
-  expiresIn?: number;
+  expiresIn?: string | number;
   type: PasswordType;
   additional?: Record<string, unknown>;
 };
 
 export type PasswordInfo = {
   type: PasswordType;
-  expiresIn?: number;
+  expiresIn?: string | number;
   lastChangeDate?: Date;
 };
 
@@ -759,10 +762,31 @@ export interface TokenVerifierConfig {
   verify?: (token: string) => Promise<any>;
 }
 
-export interface PersistenceConfig<T = any> {
-  store: (data: any, ...args: any[]) => Promise<void>;
-  read: (...args: any[]) => Promise<T | null>;
-  remove: (...args: any[]) => Promise<void>;
+export interface PersistenceMetadata {
+  key?: string;
+  name?: string;
+  expiration?: number;
+  expiresIn?: string | number;
+  [key: string]: unknown;
+}
+
+export interface PersistenceConfig<T = any, TContext = any> {
+  store: (
+    data: any,
+    context?: TContext | null,
+    metadata?: PersistenceMetadata,
+    ...args: any[]
+  ) => Promise<void> | void;
+  read: (
+    context?: TContext | null,
+    key?: string,
+    ...args: any[]
+  ) => Promise<T | null> | T | null;
+  remove: (
+    context?: TContext | null,
+    key?: string,
+    ...args: any[]
+  ) => Promise<void> | void;
 }
 
 export interface ContextOperationConfig<TContext = any, TData = any> {
@@ -791,7 +815,7 @@ export interface TokenConfig<TContext = any, TUser = any>
   rotation?: TokenRotationConfig<TContext, TUser>;
   issuer?: TokenIssuerConfig<TContext>;
   verifier?: TokenVerifierConfig;
-  persistence?: PersistenceConfig;
+  persistence?: PersistenceConfig<string, TContext>;
   additional?: Record<string, unknown>;
 }
 export interface RefreshTokenConfig<TContext = any, TUser = any>
@@ -868,13 +892,13 @@ export interface PKCEConfig<TContext> {
     generate?: (codeVerifier: string) => string;
     embed?: (context: TContext, challenge: string) => void;
     extract?: (context: TContext) => string | null;
-    persistence?: PersistenceConfig;
+    persistence?: PersistenceConfig<any, TContext>;
   };
   verifier: {
     expiresIn?: number;
     generate?: () => string;
     embed?: (context: TContext, codeVerifier: string) => void;
     extract?: (context: TContext) => string | null;
-    persistence?: PersistenceConfig;
+    persistence?: PersistenceConfig<any, TContext>;
   };
 }

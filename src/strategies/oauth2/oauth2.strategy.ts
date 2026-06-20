@@ -321,12 +321,16 @@ export abstract class OAuth2Strategy<
 
     if (this.config.state) {
       state = await OAuth2Tools.generateState(this.config);
-      await this.config.state.persistence?.store?.(state);
+      await this.config.state.persistence?.store?.(state, context, {
+        key: "state",
+      });
     }
 
     if (this.config.nonce) {
       nonce = await OAuth2Tools.generateNonce(this.config);
-      await this.config.nonce.persistence?.store?.(nonce);
+      await this.config.nonce.persistence?.store?.(nonce, context, {
+        key: "nonce",
+      });
     }
 
     const authUrl = await this.buildAuthorizationUrl(context, state, nonce);
@@ -347,7 +351,10 @@ export abstract class OAuth2Strategy<
     }
 
     const returnedState = OAuth2Tools.extractState(context);
-    const storedState = (await this.config.state.persistence?.read?.()) as
+    const storedState = (await this.config.state.persistence?.read?.(
+      context,
+      "state"
+    )) as
       | string
       | null;
 
@@ -359,7 +366,7 @@ export abstract class OAuth2Strategy<
       throw new InvalidStateError();
     }
 
-    await this.config.state.persistence?.remove?.();
+    await this.config.state.persistence?.remove?.(context, "state");
   }
 
   /**
@@ -641,8 +648,14 @@ export abstract class OAuth2Strategy<
     }
   }
 
-  protected async verifyIdToken(idToken: string): Promise<TUser | null> {
-    const storedNonce = await this.config?.nonce?.persistence?.read?.();
+  protected async verifyIdToken(
+    idToken: string,
+    context?: TContext
+  ): Promise<TUser | null> {
+    const storedNonce = await this.config?.nonce?.persistence?.read?.(
+      context,
+      "nonce"
+    );
 
     if (storedNonce) {
       const decodedToken = await this.jwks.verify(idToken);

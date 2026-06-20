@@ -185,25 +185,31 @@ export class JwtStrategy<
     );
   }
 
-  protected async storeAccessToken(token: string): Promise<void> {
-    // `persistence` is optional — null-safe both the wrapper object and the
+  protected async storeAccessToken(
+    token: string,
+    context?: TContext
+  ): Promise<void> {
+    // `persistence` is optional - null-safe both the wrapper object and the
     // `store` callback so JWT strategies without a token store can issue
     // tokens without blowing up.
     if (this.accessTokenConfig.persistence?.store) {
       await this.accessTokenConfig.persistence.store(
         token,
-        null,
-        this.accessTokenConfig.issuer.options.expiresIn
+        context ?? null,
+        { expiresIn: this.accessTokenConfig.issuer.options.expiresIn }
       );
     }
   }
 
-  protected async storeRefreshToken(token: string): Promise<void> {
+  protected async storeRefreshToken(
+    token: string,
+    context?: TContext
+  ): Promise<void> {
     if (this.refreshTokenConfig?.persistence?.store) {
       await this.refreshTokenConfig.persistence.store(
         token,
-        null,
-        this.refreshTokenConfig.issuer.options.expiresIn
+        context ?? null,
+        { expiresIn: this.refreshTokenConfig.issuer.options.expiresIn }
       );
     }
   }
@@ -261,7 +267,7 @@ export class JwtStrategy<
    * @returns {string | undefined} The refresh token, if available.
    */
   protected extractRefreshToken(context: TContext): string | undefined {
-    // `refreshTokenConfig` is optional — strategies configured without refresh
+    // `refreshTokenConfig` is optional - strategies configured without refresh
     // tokens shouldn't crash when the auth flow probes for one.
     if (!this.refreshTokenConfig) {
       return undefined;
@@ -301,7 +307,10 @@ export class JwtStrategy<
     const refreshToken = token || (await this.extractRefreshToken(context));
 
     if (refreshToken) {
-      await this.refreshTokenConfig?.persistence?.remove?.(refreshToken);
+      await this.refreshTokenConfig?.persistence?.remove?.(
+        context ?? null,
+        refreshToken
+      );
 
       if (context) {
         JwtTools.clearDefaultJwtCookie(context);
@@ -319,7 +328,10 @@ export class JwtStrategy<
     const accessToken = token || (await this.extractAccessToken(context));
 
     if (accessToken) {
-      await this.accessTokenConfig.persistence?.remove?.(accessToken);
+      await this.accessTokenConfig.persistence?.remove?.(
+        context ?? null,
+        accessToken
+      );
 
       if (context) {
         JwtTools.clearDefaultJwtCookie(context);

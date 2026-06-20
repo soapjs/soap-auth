@@ -37,7 +37,7 @@ export interface OAuth2Endpoints {
 }
 
 export interface OAuth2StateConfig<TContext = unknown, TData = any> {
-  persistence?: PersistenceConfig;
+  persistence?: PersistenceConfig<TData, TContext>;
   context?: ContextOperationConfig<TContext, TData>;
   generateState?: () => string | Promise<string>;
   validateState?: (
@@ -47,7 +47,7 @@ export interface OAuth2StateConfig<TContext = unknown, TData = any> {
 }
 
 export interface OAuth2NonceConfig<TContext = unknown, TData = any> {
-  persistence?: PersistenceConfig;
+  persistence?: PersistenceConfig<TData, TContext>;
   context?: ContextOperationConfig<TContext, TData>;
   generateNonce?: () => string | Promise<string>;
   validateNonce?: (
@@ -90,7 +90,7 @@ export interface OAuth2StrategyConfig<TContext = unknown, TUser = unknown>
     [key: string]: AuthRouteConfig;
   };
   state?: OAuth2StateConfig<TContext>;
-  nonce?: OAuth2NonceConfig;
+  nonce?: OAuth2NonceConfig<TContext>;
   jwks?: JwksConfig;
 }
 

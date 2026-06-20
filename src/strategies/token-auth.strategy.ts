@@ -90,15 +90,23 @@ export abstract class TokenAuthStrategy<
    * Stores an access token in the designated storage (e.g., database, session, cookies).
    *
    * @param {string} token - The access token to store.
+   * @param {TContext} context - The authentication context.
    */
-  protected abstract storeAccessToken(token: string): Promise<void>;
+  protected abstract storeAccessToken(
+    token: string,
+    context?: TContext
+  ): Promise<void>;
 
   /**
    * Stores a refresh token in the designated storage.
    *
    * @param {string} token - The refresh token to store.
+   * @param {TContext} context - The authentication context.
    */
-  protected abstract storeRefreshToken(token: string): Promise<void>;
+  protected abstract storeRefreshToken(
+    token: string,
+    context?: TContext
+  ): Promise<void>;
 
   /**
    * Removes an access token in the designated storage (e.g., database, session, cookies) and
@@ -309,11 +317,11 @@ export abstract class TokenAuthStrategy<
         }
       }
 
-      await this.storeAccessToken(accessToken);
+      await this.storeAccessToken(accessToken, context);
       this.embedAccessToken(accessToken, context);
 
       if (refreshToken) {
-        await this.storeRefreshToken(refreshToken);
+        await this.storeRefreshToken(refreshToken, context);
         this.embedRefreshToken(refreshToken, context);
       }
 

@@ -15,7 +15,7 @@ npm install @soapjs/soap-auth @soapjs/soap
 ## Requirements
 
 - Node.js 24.17.0 or newer
-- `@soapjs/soap` 0.12 or newer
+- `@soapjs/soap` 0.14 or newer
 
 ## Quick Start
 
@@ -68,6 +68,14 @@ Available recipes:
 - `oauth2ProviderEndpoints.facebook()`
 
 Recipes are also available from `@soapjs/soap-auth/recipes`.
+
+Type-only subpath imports are supported for TypeScript projects using classic
+`moduleResolution: node`:
+
+```ts
+import type { StorageContext } from "@soapjs/soap-auth/types";
+import type { CookieOptions } from "@soapjs/soap-auth/recipes";
+```
 
 ## Factory Configuration
 
@@ -205,6 +213,26 @@ const auth = await SoapAuth.create({
 ```
 
 For providers without a `userinfo` endpoint, implement `user.fetchUser(accessToken)` and return your application user directly.
+
+OAuth2 `state.persistence` and `nonce.persistence` callbacks receive the
+current auth context:
+
+```ts
+state: {
+  persistence: {
+    store: async (state, context, metadata) => {
+      await context.storeInCookie?.(state, { name: metadata?.key ?? "state" });
+    },
+    read: async (context, key) => context.getFromCookie?.(key ?? "state") ?? null,
+    remove: async (context, key) => {
+      await context.removeFromCookie?.(key ?? "state");
+    },
+  },
+}
+```
+
+This lets HTTP adapters such as `soap-express` persist OAuth state and nonce in
+cookies, sessions, or request-scoped storage without global state.
 
 ## Configurable Hybrid OAuth2
 

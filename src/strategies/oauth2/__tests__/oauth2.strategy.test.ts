@@ -103,7 +103,8 @@ describe("OAuth2Strategy — state / CSRF", () => {
     const ctx = makeCtx({ query: { code: "auth-code", state: "csrf-abc" } });
 
     await expect((strategy as any).validateState(ctx)).resolves.toBeUndefined();
-    expect(config.state.persistence.remove).toHaveBeenCalled();
+    expect(config.state.persistence.read).toHaveBeenCalledWith(ctx, "state");
+    expect(config.state.persistence.remove).toHaveBeenCalledWith(ctx, "state");
   });
 
   it("validateState throws InvalidStateError on mismatch", async () => {
@@ -127,7 +128,7 @@ describe("OAuth2Strategy — state / CSRF", () => {
     await expect((strategy as any).validateState(makeCtx())).resolves.toBeUndefined();
   });
 
-  it("startAuthorizationFlow generates state, stores it, and redirects", async () => {
+  it("startAuthorizationFlow generates state and nonce with context, stores them, and redirects", async () => {
     const stored: string[] = [];
     const config = {
       ...baseConfig,
@@ -137,6 +138,12 @@ describe("OAuth2Strategy — state / CSRF", () => {
           store: jest.fn(async (s: string) => stored.push(s)),
         },
       },
+      nonce: {
+        generateNonce: jest.fn(async () => "gen-nonce"),
+        persistence: {
+          store: jest.fn(),
+        },
+      },
     };
     const strategy = new TestOAuth2Strategy(config);
     const ctx = makeCtx();
@@ -144,8 +151,11 @@ describe("OAuth2Strategy — state / CSRF", () => {
     await (strategy as any).startAuthorizationFlow(ctx);
 
     expect(stored).toContain("gen-state");
+    expect(config.state.persistence.store).toHaveBeenCalledWith("gen-state", ctx, { key: "state" });
+    expect(config.nonce.persistence.store).toHaveBeenCalledWith("gen-nonce", ctx, { key: "nonce" });
     expect(ctx.redirectTo).toContain("https://provider.example/auth");
     expect(ctx.redirectTo).toContain("state=gen-state");
+    expect(ctx.redirectTo).toContain("nonce=gen-nonce");
   });
 });
 
