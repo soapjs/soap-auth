@@ -6,6 +6,7 @@ import { JwtStrategy } from "./strategies/jwt/jwt.strategy";
 import { LocalStrategy } from "./strategies/local/local.strategy";
 import { BasicStrategy } from "./strategies/basic/basic.strategy";
 import { ApiKeyStrategy } from "./strategies/api-key/api-key.strategy";
+import { ExternalIdentityOAuth2Strategy } from "./strategies/oauth2/external-identity.oauth2.strategy";
 import {
   ConfigurableHybridOAuth2Strategy,
   ConfigurableOAuth2Strategy,
@@ -13,6 +14,72 @@ import {
   GitHubStrategy,
   GoogleStrategy,
 } from "./strategies/oauth2/providers";
+import { oauth2ProviderEndpoints } from "./recipes/oauth2-presets";
+
+function resolveOAuth2Endpoints(provider: string, providerConfig: any) {
+  const preset =
+    provider === "google"
+      ? oauth2ProviderEndpoints.google()
+      : provider === "github"
+      ? oauth2ProviderEndpoints.github()
+      : provider === "facebook"
+      ? oauth2ProviderEndpoints.facebook()
+      : undefined;
+
+  return {
+    ...preset,
+    ...providerConfig.endpoints,
+  };
+}
+
+function resolveOAuth2Scope(provider: string, providerConfig: any) {
+  if (providerConfig.scope) {
+    return providerConfig.scope;
+  }
+
+  if (provider === "google") {
+    return ["openid", "email", "profile"];
+  }
+
+  if (provider === "github") {
+    return ["read:user", "user:email"];
+  }
+
+  if (provider === "facebook") {
+    return ["email", "public_profile"];
+  }
+
+  return undefined;
+}
+
+function buildOAuth2StrategyConfig(provider: string, providerConfig: any) {
+  const endpoints = resolveOAuth2Endpoints(provider, providerConfig);
+
+  if (!endpoints.authorizationUrl || !endpoints.tokenUrl) {
+    throw new Error(
+      `OAuth2 provider "${provider}" requires endpoints.authorizationUrl and endpoints.tokenUrl, or a custom strategy via http.custom.`
+    );
+  }
+
+  return {
+    ...providerConfig,
+    name: provider,
+    grantType: providerConfig.grantType ?? "authorization_code",
+    endpoints,
+    scope: resolveOAuth2Scope(provider, providerConfig),
+    routes: {
+      login: {
+        path: `/auth/${provider}`,
+        method: "GET",
+      },
+      callback: {
+        path: `/auth/${provider}/callback`,
+        method: "GET",
+      },
+      ...providerConfig.routes,
+    },
+  };
+}
 
 /**
  * Core class for soap-auth that manages and initializes various authentication strategies.
@@ -389,6 +456,20 @@ export class SoapAuth {
         for (const [provider, providerConfig] of Object.entries(
           config.http.oauth2
         )) {
+          if (providerConfig.externalIdentity) {
+            auth.addStrategy(
+              new ExternalIdentityOAuth2Strategy(
+                buildOAuth2StrategyConfig(provider, providerConfig) as any,
+                sessionHandler,
+                sharedJwt,
+                logger
+              ),
+              provider,
+              "http"
+            );
+            continue;
+          }
+
           switch (provider) {
             case "google":
               auth.addStrategy(
@@ -427,40 +508,17 @@ export class SoapAuth {
               );
               break;
             default:
-              if (
-                providerConfig.endpoints?.authorizationUrl &&
-                providerConfig.endpoints?.tokenUrl
-              ) {
-                auth.addStrategy(
-                  new ConfigurableOAuth2Strategy(
-                    {
-                      ...providerConfig,
-                      name: provider,
-                      grantType: providerConfig.grantType ?? "authorization_code",
-                      routes: {
-                        login: {
-                          path: `/auth/${provider}`,
-                          method: "GET",
-                        },
-                        callback: {
-                          path: `/auth/${provider}/callback`,
-                          method: "GET",
-                        },
-                        ...providerConfig.routes,
-                      },
-                    } as any,
-                    sessionHandler,
-                    sharedJwt,
-                    logger
-                  ),
-                  provider,
-                  "http"
-                );
-                break;
-              }
-              throw new Error(
-                `OAuth2 provider "${provider}" requires endpoints.authorizationUrl and endpoints.tokenUrl, or a custom strategy via http.custom.`
+              auth.addStrategy(
+                new ConfigurableOAuth2Strategy(
+                  buildOAuth2StrategyConfig(provider, providerConfig) as any,
+                  sessionHandler,
+                  sharedJwt,
+                  logger
+                ),
+                provider,
+                "http"
               );
+              break;
           }
         }
       }

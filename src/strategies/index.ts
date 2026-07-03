@@ -17,6 +17,8 @@ export * from "./local/local.strategy";
 export * from "./local/local.types";
 
 export * from "./oauth2/oauth2.strategy";
+export * from "./oauth2/external-identity.oauth2.strategy";
+export * from "./oauth2/external-identity.types";
 export * from "./oauth2/oauth2.tools";
 export * from "./oauth2/oauth2.types";
 export * from "./oauth2/providers";

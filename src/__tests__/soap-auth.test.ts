@@ -142,6 +142,71 @@ describe("SoapAuth.create()", () => {
     expect(auth.hasStrategy("google", "http")).toBe(true);
   });
 
+  test("external identity OAuth2 resolves app user and issues app JWT", async () => {
+    const fetchMock = jest
+      .spyOn(global, "fetch" as any)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ access_token: "google-access-token" }),
+      } as any)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          sub: "google-user-id",
+          email: "user@example.com",
+          name: "Google User",
+          email_verified: true,
+        }),
+      } as any);
+
+    const auth = await SoapAuth.create({
+      http: {
+        jwt: jwtConfig,
+        oauth2: {
+          google: {
+            clientId: "client-id",
+            clientSecret: "client-secret",
+            redirectUri: "https://example.com/auth/google/callback",
+            externalIdentity: {
+              resolveIdentity: jest.fn(async (identity: any) => ({
+                id: `app:${identity.providerUserId}`,
+                email: identity.email,
+                roles: ["user"],
+              })),
+            },
+          },
+        },
+      },
+      logger: mockLogger,
+    });
+
+    const strategy = auth.getStrategy<any>("google", "http");
+    const context: any = {
+      req: {
+        query: { code: "callback-code" },
+        headers: {},
+        cookies: {},
+      },
+      res: {
+        setHeader: jest.fn(),
+        cookie: jest.fn(),
+      },
+    };
+
+    const result = await strategy.authenticate(context);
+
+    expect(result.user).toEqual({
+      id: "app:google-user-id",
+      email: "user@example.com",
+      roles: ["user"],
+    });
+    expect(result.tokens.accessToken).toEqual(expect.any(String));
+    expect(result.tokens.accessToken).not.toBe("google-access-token");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    fetchMock.mockRestore();
+  });
+
   test("registers configurable OAuth2 providers from config", async () => {
     const auth = await SoapAuth.create({
       http: {

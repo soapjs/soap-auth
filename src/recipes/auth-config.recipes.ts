@@ -226,6 +226,18 @@ export function createOAuth2ProviderConfig<TUser = unknown>(
   } as OAuth2ProviderConfig<any, TUser>;
 }
 
+export function createExternalIdentityOAuth2ProviderConfig<TUser = unknown>(
+  options: OAuth2AuthRecipeOptions<TUser>
+): OAuth2ProviderConfig<any, TUser> {
+  if (!options.externalIdentity?.resolveIdentity) {
+    throw new Error(
+      "External identity OAuth2 config requires externalIdentity.resolveIdentity."
+    );
+  }
+
+  return createOAuth2ProviderConfig(options);
+}
+
 export function createHybridOAuth2ProviderConfig<TUser = unknown>(
   options: OAuth2AuthRecipeOptions<TUser>
 ): OAuth2ProviderConfig<any, TUser> {

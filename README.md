@@ -44,6 +44,7 @@ Recipes are framework-neutral config helpers. They return plain SoapAuth config 
 ```ts
 import {
   createApiKeyAuthConfig,
+  createExternalIdentityOAuth2ProviderConfig,
   createHybridOAuth2ProviderConfig,
   createJwtAuthConfig,
   createLocalAuthConfig,
@@ -59,6 +60,7 @@ Available recipes:
 - `createBasicAuthConfig(...)`
 - `createApiKeyAuthConfig(...)`
 - `createOAuth2ProviderConfig(...)`
+- `createExternalIdentityOAuth2ProviderConfig(...)`
 - `createHybridOAuth2ProviderConfig(...)`
 - `oauth2ProviderEndpoints.auth0(...)`
 - `oauth2ProviderEndpoints.keycloak(...)`
@@ -180,6 +182,46 @@ const auth = await SoapAuth.create({
 ```
 
 Providers with standard OAuth2/OIDC endpoints can use configurable OAuth2. Providers with unusual token exchange, user lookup, or redirect requirements can be implemented as a subclass of `OAuth2Strategy` or `HttpOAuth2Strategy` and registered through `http.custom`.
+
+## External Identity OAuth2
+
+Use external identity OAuth2 when Google, GitHub, Auth0, or another provider is only the login method, but your API must still issue its own JWT and enforce its own account provisioning rules.
+
+```ts
+import {
+  createExternalIdentityOAuth2ProviderConfig,
+  createJwtAuthConfig,
+  SoapAuth,
+} from "@soapjs/soap-auth";
+
+const auth = await SoapAuth.create({
+  http: {
+    jwt: createJwtAuthConfig({
+      accessSecret: process.env.JWT_ACCESS_SECRET!,
+      refreshSecret: process.env.JWT_REFRESH_SECRET!,
+      user: {
+        fetchUser: async (payload) => users.findById((payload as any).id),
+      },
+    }),
+    oauth2: {
+      google: createExternalIdentityOAuth2ProviderConfig({
+        provider: "google",
+        clientId: process.env.GOOGLE_CLIENT_ID!,
+        clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+        redirectUri: "https://example.com/auth/oauth/google/callback",
+        externalIdentity: {
+          resolveIdentity: async (identity) => {
+            if (!identity.email || !identity.emailVerified) return null;
+            return users.provisionOrFindByExternalIdentity(identity);
+          },
+        },
+      }),
+    },
+  },
+});
+```
+
+The OAuth provider token is used only to fetch the provider profile. After `resolveIdentity` returns an application user, `soap-auth` issues the configured local JWT access and refresh tokens. Feature code should keep depending on JWT/user/roles or policies, not on how the user logged in.
 
 ## Configurable OAuth2 Providers
 

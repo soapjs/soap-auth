@@ -7,6 +7,7 @@ import {
   PersistenceConfig,
   ContextOperationConfig,
 } from "../../types";
+import { ExternalIdentityConfig } from "./external-identity.types";
 
 export interface OAuth2Endpoints {
   /**
@@ -101,5 +102,8 @@ export interface OAuth2ProviderConfig<TContext = unknown, TUser = unknown>
   > {
   grantType?: "authorization_code";
   endpoints?: Partial<OAuth2Endpoints>;
+  externalIdentity?: ExternalIdentityConfig<TContext, any> & {
+    issueAppTokens?: boolean;
+  };
   routes?: OAuth2StrategyConfig<TContext, TUser>["routes"];
 }

@@ -1,5 +1,6 @@
 import {
   createApiKeyAuthConfig,
+  createExternalIdentityOAuth2ProviderConfig,
   createHybridOAuth2ProviderConfig,
   createJwtAuthConfig,
   createLocalAuthConfig,
@@ -68,6 +69,23 @@ describe("auth config recipes", () => {
       "https://tenant.auth0.com/authorize"
     );
     expect(config.routes.callback.path).toBe("/auth/auth0/callback");
+  });
+
+  it("creates external identity OAuth2 config from Google preset", () => {
+    const config = createExternalIdentityOAuth2ProviderConfig({
+      provider: "google",
+      clientId: "client-id",
+      clientSecret: "client-secret",
+      redirectUri: "https://app.example/callback",
+      externalIdentity: {
+        resolveIdentity: async () => ({ id: "u1" }),
+      },
+    });
+
+    expect(config.endpoints.userInfoUrl).toBe(
+      "https://openidconnect.googleapis.com/v1/userinfo"
+    );
+    expect(config.externalIdentity.resolveIdentity).toEqual(expect.any(Function));
   });
 
   it("creates configurable hybrid OAuth2 config from Discord preset", () => {
