@@ -42,6 +42,63 @@ describe("JwtTools", () => {
     expect(typeof token).toBe("string");
   });
 
+  it("should generate unique refresh tokens for identical payloads", () => {
+    const minimalPayload = { id: "user123" };
+    const firstToken = JwtTools.generateRefreshToken(
+      minimalPayload,
+      config.refreshToken
+    );
+    const secondToken = JwtTools.generateRefreshToken(
+      minimalPayload,
+      config.refreshToken
+    );
+    const firstDecoded = JwtTools.verifyRefreshToken(
+      firstToken,
+      config.refreshToken
+    );
+    const secondDecoded = JwtTools.verifyRefreshToken(
+      secondToken,
+      config.refreshToken
+    );
+
+    expect(firstToken).not.toBe(secondToken);
+    expect(firstDecoded.jti).toEqual(expect.any(String));
+    expect(secondDecoded.jti).toEqual(expect.any(String));
+    expect(firstDecoded.jti).not.toBe(secondDecoded.jti);
+  });
+
+  it("should preserve caller-supplied refresh token jwtid", () => {
+    const token = JwtTools.generateRefreshToken(payload, {
+      ...config.refreshToken,
+      issuer: {
+        ...config.refreshToken.issuer,
+        options: {
+          ...config.refreshToken.issuer.options,
+          jwtid: "provided-jti",
+        },
+      },
+    });
+    const decoded = JwtTools.verifyRefreshToken(token, config.refreshToken);
+
+    expect(decoded.jti).toBe("provided-jti");
+  });
+
+  it("should map caller-supplied refresh token jti option to jwtid", () => {
+    const token = JwtTools.generateRefreshToken(payload, {
+      ...config.refreshToken,
+      issuer: {
+        ...config.refreshToken.issuer,
+        options: {
+          ...config.refreshToken.issuer.options,
+          jti: "provided-jti-alias",
+        },
+      },
+    } as any);
+    const decoded = JwtTools.verifyRefreshToken(token, config.refreshToken);
+
+    expect(decoded.jti).toBe("provided-jti-alias");
+  });
+
   it("should throw error when generating refresh token without secret key", () => {
     const invalidConfig: any = {
       ...config,

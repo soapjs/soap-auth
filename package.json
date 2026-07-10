@@ -1,6 +1,6 @@
 {
   "name": "@soapjs/soap-auth",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Authentication strategies, sessions, MFA, and token helpers for the SoapJS ecosystem.",
   "homepage": "https://docs.soapjs.com",
   "repository": {

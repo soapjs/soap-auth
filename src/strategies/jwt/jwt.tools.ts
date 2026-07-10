@@ -53,10 +53,24 @@ export class JwtTools {
     if (!config.issuer.secretKey) {
       throw new UndefinedTokenSecretError("Refresh");
     }
+
+    const options = { ...config.issuer.options } as SignOptions & {
+      jti?: string;
+    };
+
+    if (options.jti && !options.jwtid) {
+      options.jwtid = options.jti;
+    }
+    delete options.jti;
+
+    if (!options.jwtid && !payload?.jti) {
+      options.jwtid = crypto.randomUUID();
+    }
+
     return jwt.sign(
       payload,
       config.issuer.secretKey,
-      config.issuer.options as SignOptions
+      options
     );
   }
 

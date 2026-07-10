@@ -8,6 +8,7 @@
 - Added refresh-token persistence reads during refresh so revoked or unknown persisted refresh tokens are rejected before issuing new tokens.
 - Honored custom JWT verifier hooks for both access and refresh tokens.
 - Fixed refresh-token generation to use the refresh-token payload builder instead of the access-token payload builder.
+- Added default `jti` generation for refresh tokens so identical minimal payloads still produce unique token strings.
 - Made refresh-token rotation work without custom `isLimitReached` or `rotateToken` hooks by using default limit handling and internally generated refresh tokens.
 
 ### Changed
@@ -18,4 +19,4 @@
 
 ### Tests
 
-- Added regression coverage for JWT logout revocation, persistence-backed refresh revocation, custom verifier hooks, refresh payload generation, default rotation behavior, and app-specific `SoapAuth.create` user typing.
+- Added regression coverage for JWT logout revocation, persistence-backed refresh revocation, custom verifier hooks, refresh payload generation, refresh token uniqueness, default rotation behavior, and app-specific `SoapAuth.create` user typing.
