@@ -1,6 +1,8 @@
 import { jest } from "@jest/globals";
+import * as Soap from "@soapjs/soap";
 import { SoapAuth } from "../soap-auth";
 import { MemorySessionStore } from "../session/memory.session-store";
+import { SoapAuthConfig } from "../types";
 
 describe("SoapAuth", () => {
   let soapAuth;
@@ -306,5 +308,43 @@ describe("SoapAuth.create()", () => {
       logger: mockLogger,
     });
     expect(auth.hasStrategy("local", "http")).toBe(true);
+  });
+
+  test("accepts app-specific user types in strategy callbacks", async () => {
+    interface AppUser extends Soap.AuthUser {
+      tenantId: string;
+    }
+
+    const typedConfig: SoapAuthConfig<unknown, AppUser> = {
+      http: {
+        jwt: {
+          accessToken: {
+            issuer: {
+              secretKey: "test-secret-key-for-tests",
+              options: { expiresIn: "1h" },
+            },
+          },
+          user: {
+            fetchUser: async () => ({
+              id: "typed-user",
+              email: "typed@example.com",
+              tenantId: "tenant-a",
+            }),
+          },
+          role: {
+            authorizeByRoles: async (user, roles) => {
+              const tenantId: string = user.tenantId;
+              return roles.includes(tenantId);
+            },
+            roles: ["tenant-a"],
+          },
+          routes: {},
+        },
+      },
+      logger: mockLogger,
+    };
+
+    const auth = await SoapAuth.create(typedConfig);
+    expect(auth.hasStrategy("jwt", "http")).toBe(true);
   });
 });

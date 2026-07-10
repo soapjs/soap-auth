@@ -1,7 +1,11 @@
 import jwt from "jsonwebtoken";
 import * as Soap from "@soapjs/soap";
 import { TokenAuthStrategy } from "../token-auth.strategy";
-import { UndefinedTokenError, UndefinedTokenSecretError } from "../../errors";
+import {
+  InvalidTokenError,
+  UndefinedTokenError,
+  UndefinedTokenSecretError,
+} from "../../errors";
 import { JwtTools, prepareJwtConfig } from "./jwt.tools";
 import { TokenAuthStrategyConfig, TokenConfig } from "../../types";
 import { ValidationUtils, ValidationError } from "../../utils/validation";
@@ -96,12 +100,20 @@ export class JwtStrategy<
    * @returns {Promise<any>} The decoded token payload.
    * @throws {InvalidTokenError} If the token is invalid or expired.
    */
-  protected verifyAccessToken(token: string): Promise<any> {
+  protected async verifyAccessToken(token: string): Promise<any> {
     try {
       // Validate input
       ValidationUtils.required(token, "token");
       ValidationUtils.jwtToken(token, "token");
-      
+
+      if (this.accessTokenConfig.verifier?.verify) {
+        try {
+          return await this.accessTokenConfig.verifier.verify(token);
+        } catch (error) {
+          throw new InvalidTokenError("Access");
+        }
+      }
+
       if (!this.accessTokenConfig.issuer.secretKey)
         throw new UndefinedTokenSecretError("Access");
 
@@ -129,12 +141,20 @@ export class JwtStrategy<
    * @returns {Promise<any>} The decoded token payload.
    * @throws {InvalidTokenError} If the token is invalid, expired, or revoked.
    */
-  protected verifyRefreshToken(token: string): Promise<any> {
+  protected async verifyRefreshToken(token: string): Promise<any> {
     try {
       // Validate input
       ValidationUtils.required(token, "token");
       ValidationUtils.jwtToken(token, "token");
-      
+
+      if (this.refreshTokenConfig.verifier?.verify) {
+        try {
+          return await this.refreshTokenConfig.verifier.verify(token);
+        } catch (error) {
+          throw new InvalidTokenError("Refresh");
+        }
+      }
+
       if (!this.refreshTokenConfig.issuer.secretKey)
         throw new UndefinedTokenSecretError("Refresh");
 
@@ -179,7 +199,7 @@ export class JwtStrategy<
     user: TUser,
     context: TContext
   ): Promise<string> {
-    const payload = this.buildAccessTokenPayload(user, context);
+    const payload = this.buildRefreshTokenPayload(user, context);
     return Promise.resolve(
       JwtTools.generateRefreshToken(payload, this.refreshTokenConfig)
     );

@@ -86,23 +86,26 @@ function buildOAuth2StrategyConfig(provider: string, providerConfig: any) {
  */
 export class SoapAuth {
   private requiredStrategyMethods = ["authenticate"];
-  private strategies = new Map<AuthCategories, Map<string, Soap.AuthStrategy>>();
+  private strategies = new Map<
+    AuthCategories,
+    Map<string, Soap.AuthStrategy<any, any>>
+  >();
   private logger?: Soap.Logger;
   /**
    * Constructs an instance of SoapAuth, setting up strategies based on provided configuration.
    * @param {SoapAuthConfig} config - Configuration object specifying strategies and their options.
    */
-  constructor(config: SoapAuthConfig) {
+  constructor(config: SoapAuthConfig<any, any>) {
     // Validate configuration
     this.validateConfig(config);
-    
-    this.strategies.set("http", new Map<string, Soap.AuthStrategy>());
-    this.strategies.set("socket", new Map<string, Soap.AuthStrategy>());
-    this.strategies.set("event", new Map<string, Soap.AuthStrategy>());
-    this.strategies.set("isa", new Map<string, Soap.AuthStrategy>());
-    this.strategies.set("webhook", new Map<string, Soap.AuthStrategy>());
-    this.strategies.set("grpc", new Map<string, Soap.AuthStrategy>());
-    this.strategies.set("edge", new Map<string, Soap.AuthStrategy>());
+
+    this.strategies.set("http", new Map<string, Soap.AuthStrategy<any, any>>());
+    this.strategies.set("socket", new Map<string, Soap.AuthStrategy<any, any>>());
+    this.strategies.set("event", new Map<string, Soap.AuthStrategy<any, any>>());
+    this.strategies.set("isa", new Map<string, Soap.AuthStrategy<any, any>>());
+    this.strategies.set("webhook", new Map<string, Soap.AuthStrategy<any, any>>());
+    this.strategies.set("grpc", new Map<string, Soap.AuthStrategy<any, any>>());
+    this.strategies.set("edge", new Map<string, Soap.AuthStrategy<any, any>>());
     this.logger = config.logger;
   }
 
@@ -111,7 +114,7 @@ export class SoapAuth {
    * @param {SoapAuthConfig} config - Configuration to validate
    * @throws {ValidationError} If configuration is invalid
    */
-  private validateConfig(config: SoapAuthConfig): void {
+  private validateConfig(config: SoapAuthConfig<any, any>): void {
     try {
       ValidationUtils.required(config, "config");
       
@@ -232,7 +235,7 @@ export class SoapAuth {
    * @param {Soap.AuthStrategy | undefined} strategyInstance - The strategy instance to add.
    */
   addStrategy(
-    strategyInstance: Soap.AuthStrategy | undefined,
+    strategyInstance: Soap.AuthStrategy<any, any> | undefined,
     name: string,
     type: AuthCategories
   ) {
@@ -410,7 +413,10 @@ export class SoapAuth {
    * @param config - Full SoapAuth configuration.
    * @returns Initialized SoapAuth instance.
    */
-  static async create(config: SoapAuthConfig): Promise<SoapAuth> {
+  static async create<
+    TContext = unknown,
+    TUser extends Soap.AuthUser = Soap.AuthUser
+  >(config: SoapAuthConfig<TContext, TUser>): Promise<SoapAuth> {
     const auth = new SoapAuth(config);
     const logger = config.logger;
 
@@ -461,7 +467,7 @@ export class SoapAuth {
               new ExternalIdentityOAuth2Strategy(
                 buildOAuth2StrategyConfig(provider, providerConfig) as any,
                 sessionHandler,
-                sharedJwt,
+                sharedJwt as any,
                 logger
               ),
               provider,
@@ -476,7 +482,7 @@ export class SoapAuth {
                 new GoogleStrategy(
                   providerConfig as any,
                   sessionHandler,
-                  sharedJwt,
+                  sharedJwt as any,
                   logger
                 ),
                 "google",
@@ -488,7 +494,7 @@ export class SoapAuth {
                 new GitHubStrategy(
                   providerConfig as any,
                   sessionHandler,
-                  sharedJwt,
+                  sharedJwt as any,
                   logger
                 ),
                 "github",
@@ -500,7 +506,7 @@ export class SoapAuth {
                 new FacebookStrategy(
                   providerConfig as any,
                   sessionHandler,
-                  sharedJwt,
+                  sharedJwt as any,
                   logger
                 ),
                 "facebook",
@@ -512,7 +518,7 @@ export class SoapAuth {
                 new ConfigurableOAuth2Strategy(
                   buildOAuth2StrategyConfig(provider, providerConfig) as any,
                   sessionHandler,
-                  sharedJwt,
+                  sharedJwt as any,
                   logger
                 ),
                 provider,
@@ -555,7 +561,7 @@ export class SoapAuth {
                 },
               } as any,
               sessionHandler,
-              sharedJwt,
+              sharedJwt as any,
               logger
             ),
             provider,
@@ -566,7 +572,11 @@ export class SoapAuth {
 
       if (config.http.custom) {
         for (const [name, strategy] of Object.entries(config.http.custom)) {
-          auth.addStrategy(strategy, name, "http");
+          auth.addStrategy(
+            strategy as Soap.AuthStrategy<any, any>,
+            name,
+            "http"
+          );
         }
       }
     }
@@ -591,7 +601,11 @@ export class SoapAuth {
 
       if (config.socket.custom) {
         for (const [name, strategy] of Object.entries(config.socket.custom)) {
-          auth.addStrategy(strategy, name, "socket");
+          auth.addStrategy(
+            strategy as Soap.AuthStrategy<any, any>,
+            name,
+            "socket"
+          );
         }
       }
     }

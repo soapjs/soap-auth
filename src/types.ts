@@ -350,7 +350,7 @@ export interface TokenAuthConfig<TContext = unknown, TUser = unknown> {
 
 export interface TokenAuthStrategyConfig<TContext = unknown, TUser = unknown>
   extends BaseAuthStrategyConfig<TContext, TUser>,
-    TokenAuthConfig<TContext> {
+    TokenAuthConfig<TContext, TUser> {
   user?: UserConfig<TUser>;
   routes: {
     login?: AuthRouteConfig;
@@ -509,9 +509,9 @@ export interface SoapAuthConfig<TContext = unknown, TUser extends Soap.AuthUser 
 
   /**
    * Configuration for JWT applicable to all strategies unless overridden.
-   * @type {TokenAuthConfig<TContext> | undefined}
+   * @type {TokenAuthConfig<TContext, TUser> | undefined}
    */
-  jwt?: TokenAuthConfig<TContext>;
+  jwt?: TokenAuthConfig<TContext, TUser>;
 
   /**
    * Configuration for http strategies.
@@ -771,18 +771,18 @@ export interface PersistenceMetadata {
 }
 
 export interface PersistenceConfig<T = any, TContext = any> {
-  store: (
+  store?: (
     data: any,
     context?: TContext | null,
     metadata?: PersistenceMetadata,
     ...args: any[]
   ) => Promise<void> | void;
-  read: (
+  read?: (
     context?: TContext | null,
     key?: string,
     ...args: any[]
   ) => Promise<T | null> | T | null;
-  remove: (
+  remove?: (
     context?: TContext | null,
     key?: string,
     ...args: any[]
@@ -833,14 +833,14 @@ export interface TokenRotationConfig<TContext, TUser> {
    * Maximum number of rotations allowed before forcing re-authentication.
    * If undefined or null, no rotation limit is enforced.
    */
-  maxRotations: number;
+  maxRotations?: number;
 
   /**
    * Reads the current rotation count for the token (or user),
    * typically from the token payload or some storage (DB/Redis).
    * If not provided, rotation counting may be skipped.
    */
-  getRotationCount: (
+  getRotationCount?: (
     token: string,
     user: TUser,
     context: TContext
@@ -855,7 +855,7 @@ export interface TokenRotationConfig<TContext, TUser> {
    * @param {TContext} context - The authentication context.
    * @returns {Promise<{ newToken: string; newRotationCount?: number }>} The new token and optional updated rotation count.
    */
-  rotateToken: (
+  rotateToken?: (
     oldToken: string,
     user: TUser,
     context: TContext

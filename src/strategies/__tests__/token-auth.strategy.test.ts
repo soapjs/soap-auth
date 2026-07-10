@@ -304,6 +304,53 @@ describe("TokenAuthStrategy", () => {
       });
     });
 
+    it("should reject refresh tokens missing from persistence", async () => {
+      const read = jest.fn().mockResolvedValue(null);
+      config.refreshToken = {
+        enabled: true,
+        persistence: { read },
+      } as any;
+      context.refreshToken = "revokedRefresh";
+
+      jest
+        .spyOn(strategy as any, "verifyRefreshToken")
+        .mockResolvedValueOnce({ userId: "testUserId" });
+      const issueSpy = jest.spyOn(strategy as any, "issueTokens");
+
+      await expect(strategy.refreshTokens(context)).rejects.toThrow(
+        InvalidTokenError
+      );
+      expect(read).toHaveBeenCalledWith(context, "revokedRefresh");
+      expect(issueSpy).not.toHaveBeenCalled();
+    });
+
+    it("should refresh normally when persistence read returns a record", async () => {
+      const read = jest.fn().mockResolvedValue({ active: true });
+      config.refreshToken = {
+        enabled: true,
+        persistence: { read },
+      } as any;
+      context.refreshToken = "validRefresh";
+
+      jest
+        .spyOn(strategy as any, "verifyRefreshToken")
+        .mockResolvedValueOnce({ userId: "testUserId" });
+      jest
+        .spyOn(strategy as any, "generateAccessToken")
+        .mockResolvedValueOnce("newAccessToken");
+      jest
+        .spyOn(strategy as any, "generateRefreshToken")
+        .mockResolvedValueOnce("newRefreshToken");
+
+      const result = await strategy.refreshTokens(context);
+
+      expect(read).toHaveBeenCalledWith(context, "validRefresh");
+      expect(result.tokens).toEqual({
+        accessToken: "newAccessToken",
+        refreshToken: "newRefreshToken",
+      });
+    });
+
     describe("absoluteExpiry", () => {
       it("should log a warning and throw InvalidTokenError if absolute expiry is exceeded (onExpiry=error)", async () => {
         config.refreshToken = {
@@ -420,7 +467,7 @@ describe("TokenAuthStrategy", () => {
         });
       });
 
-      it("should warn if rotation is enabled but rotateToken is not provided", async () => {
+      it("should generate a refresh token internally when rotateToken is not provided", async () => {
         config.refreshToken.rotation.rotateToken = undefined;
 
         jest
@@ -429,15 +476,79 @@ describe("TokenAuthStrategy", () => {
         jest
           .spyOn(strategy as any, "generateAccessToken")
           .mockResolvedValueOnce("newAccessToken");
+        jest
+          .spyOn(strategy as any, "generateRefreshToken")
+          .mockResolvedValueOnce("generatedRefreshToken");
 
         const result = await strategy.refreshTokens(context);
-        expect(mockLogger.warn).toHaveBeenCalledWith(
+        expect(mockLogger.warn).not.toHaveBeenCalledWith(
           "Rotation enabled but rotateToken not provided."
+        );
+        expect(config.refreshToken.rotation.afterRotation).toHaveBeenCalledWith(
+          "someOldRefreshToken",
+          "generatedRefreshToken",
+          { id: "testUserId", name: "Test User" },
+          context,
+          2
         );
         expect(result).toEqual({
           user: { id: "testUserId", name: "Test User" },
-          tokens: { accessToken: "newAccessToken" },
+          tokens: {
+            accessToken: "newAccessToken",
+            refreshToken: "generatedRefreshToken",
+          },
         });
+      });
+
+      it("should use the default rotation limit check when omitted", async () => {
+        config.refreshToken.rotation.isLimitReached = undefined;
+        (
+          config.refreshToken.rotation.getRotationCount as jest.Mock
+        ).mockResolvedValueOnce(3);
+
+        await expect(strategy.refreshTokens(context)).rejects.toThrow(
+          TokenRotationLimitReachedError
+        );
+      });
+    });
+  });
+
+  describe("logout", () => {
+    it("should invalidate the current refresh token and logout the session", async () => {
+      const onSuccess = jest.fn();
+      config.onSuccess = onSuccess;
+      context.refreshToken = "refreshToRevoke";
+      const invalidateSpy = jest.spyOn(strategy as any, "invalidateRefreshToken");
+
+      await strategy.logout(context);
+
+      expect(invalidateSpy).toHaveBeenCalledWith("refreshToRevoke", context);
+      expect(mockSession.logoutSession).toHaveBeenCalledWith(context);
+      expect(onSuccess).toHaveBeenCalledWith("logout", { context });
+    });
+
+    it("should logout successfully when no refresh token is present", async () => {
+      const onSuccess = jest.fn();
+      config.onSuccess = onSuccess;
+
+      await strategy.logout(context);
+
+      expect(mockSession.logoutSession).toHaveBeenCalledWith(context);
+      expect(onSuccess).toHaveBeenCalledWith("logout", { context });
+    });
+
+    it("should call onFailure when logout fails", async () => {
+      const onFailure = jest.fn();
+      config.onFailure = onFailure;
+      context.refreshToken = "refreshToRevoke";
+      jest
+        .spyOn(strategy as any, "invalidateRefreshToken")
+        .mockRejectedValueOnce(new Error("revoke failed"));
+
+      await expect(strategy.logout(context)).rejects.toThrow("revoke failed");
+      expect(onFailure).toHaveBeenCalledWith("logout", {
+        error: expect.any(Error),
+        context,
       });
     });
   });

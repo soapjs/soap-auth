@@ -257,6 +257,19 @@ export abstract class TokenAuthStrategy<
         throw new InvalidTokenError("Refresh");
       }
 
+      const persistedRefreshToken =
+        await this.config.refreshToken.persistence?.read?.(
+          context ?? null,
+          refreshToken
+        );
+
+      if (
+        this.config.refreshToken.persistence?.read &&
+        !persistedRefreshToken
+      ) {
+        throw new InvalidTokenError("Refresh");
+      }
+
       if (this.config.refreshToken.absoluteExpiry) {
         const { payloadField, onExpiry } =
           this.config.refreshToken.absoluteExpiry;
@@ -344,7 +357,9 @@ export abstract class TokenAuthStrategy<
   ) {
     let rotationCount = 0;
     let newRefreshToken;
-    if (this.config.refreshToken.rotation.getRotationCount) {
+    const rotation = this.config.refreshToken.rotation;
+
+    if (rotation.getRotationCount) {
       rotationCount = await this.config.refreshToken.rotation.getRotationCount(
         refreshToken,
         user,
@@ -352,10 +367,14 @@ export abstract class TokenAuthStrategy<
       );
     }
 
+    const isLimitReached =
+      rotation.isLimitReached ??
+      ((count: number, max?: number) => max !== undefined && count >= max);
+
     if (
-      this.config.refreshToken.rotation.isLimitReached(
+      isLimitReached(
         rotationCount,
-        this.config.refreshToken.rotation.maxRotations,
+        rotation.maxRotations,
         user,
         context
       )
@@ -363,8 +382,8 @@ export abstract class TokenAuthStrategy<
       throw new TokenRotationLimitReachedError();
     }
 
-    if (this.config.refreshToken.rotation.rotateToken) {
-      const result = await this.config.refreshToken.rotation.rotateToken(
+    if (rotation.rotateToken) {
+      const result = await rotation.rotateToken(
         refreshToken,
         user,
         context
@@ -376,20 +395,37 @@ export abstract class TokenAuthStrategy<
       } else {
         rotationCount += 1;
       }
-
-      if (this.config.refreshToken.rotation.afterRotation) {
-        await this.config.refreshToken.rotation.afterRotation(
-          refreshToken,
-          newRefreshToken,
-          user,
-          context,
-          rotationCount
-        );
-      }
     } else {
-      this.logger?.warn("Rotation enabled but rotateToken not provided.");
+      newRefreshToken = await this.generateRefreshToken(user, context);
+      rotationCount += 1;
+    }
+
+    if (rotation.afterRotation) {
+      await rotation.afterRotation(
+        refreshToken,
+        newRefreshToken,
+        user,
+        context,
+        rotationCount
+      );
     }
 
     return newRefreshToken;
+  }
+
+  async logout(context: TContext): Promise<void> {
+    try {
+      const refreshToken = this.extractRefreshToken(context);
+
+      if (refreshToken) {
+        await this.invalidateRefreshToken(refreshToken, context);
+      }
+
+      await this.session?.logoutSession(context);
+      await this.onSuccess("logout", { context });
+    } catch (error) {
+      await this.onFailure("logout", { error, context });
+      throw error;
+    }
   }
 }

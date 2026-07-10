@@ -191,6 +191,76 @@ describe("JWTStrategy", () => {
     );
   });
 
+  it("should use the refresh token payload builder for refresh tokens", async () => {
+    mockConfig.accessToken.issuer.buildPayload = jest.fn().mockReturnValue({
+      id: mockUser.id,
+      email: mockUser.email,
+      roles: ["admin"],
+    });
+    mockConfig.refreshToken.issuer.buildPayload = jest.fn().mockReturnValue({
+      id: mockUser.id,
+    });
+    strategy = new JwtStrategy(mockConfig, mockLogger);
+
+    const accessToken = await strategy.generateAccessToken(mockUser, mockContext);
+    const refreshToken = await strategy.generateRefreshToken(mockUser, mockContext);
+
+    expect(jwt.decode(accessToken)).toMatchObject({
+      id: mockUser.id,
+      email: mockUser.email,
+      roles: ["admin"],
+    });
+    expect(jwt.decode(refreshToken)).toMatchObject({
+      id: mockUser.id,
+    });
+    expect(jwt.decode(refreshToken)).not.toHaveProperty("email");
+    expect(mockConfig.refreshToken.issuer.buildPayload).toHaveBeenCalledWith(
+      mockUser,
+      mockContext
+    );
+  });
+
+  it("should honor a custom access token verifier", async () => {
+    const verify = jest.fn().mockResolvedValue({ id: mockUser.id });
+    mockConfig.accessToken.verifier = { options: {}, verify };
+    strategy = new JwtStrategy(mockConfig, mockLogger);
+
+    await expect(strategy.verifyAccessToken("a.b.c")).resolves.toEqual({
+      id: mockUser.id,
+    });
+    expect(verify).toHaveBeenCalledWith("a.b.c");
+  });
+
+  it("should honor a custom refresh token verifier", async () => {
+    const verify = jest.fn().mockResolvedValue({ id: mockUser.id });
+    mockConfig.refreshToken.verifier = { options: {}, verify };
+    strategy = new JwtStrategy(mockConfig, mockLogger);
+
+    await expect(strategy.verifyRefreshToken("a.b.c")).resolves.toEqual({
+      id: mockUser.id,
+    });
+    expect(verify).toHaveBeenCalledWith("a.b.c");
+  });
+
+  it("should map custom verifier rejection to InvalidTokenError", async () => {
+    mockConfig.accessToken.verifier = {
+      options: {},
+      verify: jest.fn().mockRejectedValue(new Error("revoked")),
+    };
+    mockConfig.refreshToken.verifier = {
+      options: {},
+      verify: jest.fn().mockRejectedValue(new Error("revoked")),
+    };
+    strategy = new JwtStrategy(mockConfig, mockLogger);
+
+    await expect(strategy.verifyAccessToken("a.b.c")).rejects.toThrow(
+      InvalidTokenError
+    );
+    await expect(strategy.verifyRefreshToken("a.b.c")).rejects.toThrow(
+      InvalidTokenError
+    );
+  });
+
   it("should invalidate refresh token", async () => {
     jest
       .spyOn(strategy, "extractRefreshToken")
